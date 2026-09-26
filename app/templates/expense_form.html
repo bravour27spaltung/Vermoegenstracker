@@ -11,7 +11,7 @@
   <input type="hidden" name="snapshot_date" value="{{ target_date }}">
   <table>
     <thead>
-      <tr><th>Kategorie</th><th class="right">Letzter Betrag</th><th>€ pro Monat zum {{ target_label }}</th></tr>
+      <tr><th>Kategorie</th><th class="right">Letzter Betrag</th><th>Betrag zum {{ target_label }}</th></tr>
     </thead>
     <tbody>
       {% for row in rows %}
@@ -20,6 +20,7 @@
         <td class="right">{{ row.previous }}</td>
         <td{% if row.error %} class="has-error"{% endif %}>
           <input type="text" inputmode="decimal" autocomplete="off" name="amount_{{ row.category.id }}" value="{{ row.default }}" required aria-label="Betrag {{ row.category.name }} zum {{ target_label }}">
+          <span class="sub">€ pro {{ row.unit }}</span>
           {% if row.error %}<span class="error">{{ row.error }}</span>{% endif %}
         </td>
       </tr>
@@ -30,5 +31,5 @@
   </table>
   {% if rows %}<button type="submit" class="btn">Speichern</button>{% endif %}
 </form>
-<p><small>Beträge im Format 45,90 (auch 45.90 geht). Gemeint ist der monatliche Betrag, nicht die Jahressumme.</small></p>
+<p><small>Beträge im Format 45,90 (auch 45.90 geht). Bei „€ pro Quartal“ bzw. „€ pro Jahr“ ist die volle Zahlung gemeint (z. B. die Jahresprämie), nicht der Monatsanteil – den rechnet die Übersicht selbst aus.</small></p>
 {% endblock %}

@@ -2,23 +2,24 @@
 {% block title %}Ausgaben{% endblock %}
 {% block content %}
 <h1>Wiederkehrende Ausgaben</h1>
-<p><small>Miete, Versicherungen, Abos und Ähnliches nach Kategorie – so siehst du, wie sich einzelne Posten über die Zeit entwickeln (z. B. eine steigende Prämie). Für die Liquiditätsquote im <a href="/jahresupdate">Jahresupdate</a> reicht weiterhin eine einzelne Gesamtsumme; die hier erfassten Kategorien sind unabhängig davon.</small></p>
+<p><small>Miete, Versicherungen, Abos und Ähnliches nach Kategorie – so siehst du, wie sich einzelne Posten über die Zeit entwickeln (z. B. eine steigende Prämie). Jede Kategorie hat einen Turnus; für Verlauf und Summe wird alles auf ein Monatsäquivalent umgerechnet, damit z. B. eine jährliche KFZ-Versicherung mit der monatlichen Miete vergleichbar ist. Für die Liquiditätsquote im <a href="/jahresupdate">Jahresupdate</a> reicht weiterhin eine einzelne Gesamtsumme; das ist unabhängig von den hier erfassten Kategorien.</small></p>
 {% if ok %}<p role="status" class="good">✓ {{ ok }}</p>{% endif %}
 {% if error %}<p role="alert" class="error"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
 
 <div class="card">
   <h2>Verlauf</h2>
   {{ chart_svg | safe }}
-  {% if rows %}<p class="muted">Summe zum letzten Stichtag je Kategorie: <strong>{{ total_latest }}</strong> pro Monat</p>{% endif %}
+  {% if rows %}<p class="muted">Monatsäquivalent-Summe zum letzten Stichtag je Kategorie: <strong>{{ total_latest }}</strong> pro Monat</p>{% endif %}
 </div>
 
 <table>
-  <thead><tr><th>Kategorie</th><th class="right">Letzter Betrag</th><th>Stand</th><th></th></tr></thead>
+  <thead><tr><th>Kategorie</th><th>Turnus</th><th class="right">Letzter Betrag</th><th>Stand</th><th></th></tr></thead>
   <tbody>
     {% for row in rows %}
     <tr>
       <td>{{ row.category.name }}</td>
-      <td class="right">{{ row.latest }}</td>
+      <td>{{ row.cadence_label }}</td>
+      <td class="right">{{ row.latest }}{% if row.monthly_equivalent %}<br><span class="sub">≈ {{ row.monthly_equivalent }} / Monat</span>{% endif %}</td>
       <td>{{ row.latest_date or '–' }}</td>
       <td>
         <form class="inline" method="post" action="/expenses/{{ row.category.id }}/deactivate"
@@ -28,7 +29,7 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="4">Noch keine Kategorien angelegt.</td></tr>
+    <tr><td colspan="5">Noch keine Kategorien angelegt.</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -37,7 +38,14 @@
 
 <h2>Neue Kategorie</h2>
 <form method="post" action="/expenses">
-  <p><label>Name<br><input type="text" name="name" required autofocus placeholder="z. B. Miete, Haftpflicht, Fitnessstudio"></label></p>
+  <p><label>Name<br><input type="text" name="name" required autofocus placeholder="z. B. Miete, Haftpflicht, KFZ-Versicherung"></label></p>
+  <p><label>Turnus<br>
+    <select name="cadence">
+      {% for c in cadences %}
+      <option value="{{ c.value }}" {{ 'selected' if c.value == 'MONTHLY' }}>{{ cadence_labels[c] }}</option>
+      {% endfor %}
+    </select>
+  </label><br><small>Wie oft die Zahlung fällig wird – der Betrag, den du unter „Stichtag erfassen“ einträgst, bezieht sich auf eine Zahlung in diesem Turnus (bei „jährlich“ also die Jahresprämie, nicht ein Zwölftel davon).</small></p>
   <p><button type="submit">Anlegen</button></p>
 </form>
 

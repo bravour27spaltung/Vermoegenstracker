@@ -1,10 +1,15 @@
 """Wiederkehrende Ausgaben nach Kategorie (Miete, Versicherungen, Abos, ...).
 
+Jede Kategorie hat einen Turnus (monatlich/quartalsweise/jährlich): der erfasste
+Betrag bezieht sich auf EINE Zahlung in diesem Turnus (bei einer KFZ-Versicherung
+also die Jahresprämie, nicht ein Zwölftel davon). Für Übersicht und Verlauf wird
+daraus ein Monatsäquivalent gebildet (Betrag ÷ Anzahl Monate im Turnus), damit
+Kategorien mit unterschiedlichem Turnus vergleichbar sind und sich zu einer
+monatlichen Gesamtbelastung summieren lassen.
+
 Getrennt von ExpenseRecord (der einzigen Jahressumme, die die Liquiditätsquote im
-Jahresupdate speist): hier geht es um die Entwicklung einzelner Kategorien über die Zeit,
-damit sich z. B. eine steigende Versicherungsprämie erkennen lässt. Gleiches Muster wie
-Position/Snapshot: eine Kategorie wird einmal angelegt, ihr Betrag dann zu beliebig vielen
-Stichtagen erfasst.
+Jahresupdate speist): hier geht es um die Entwicklung einzelner Kategorien über die
+Zeit, damit sich z. B. eine steigende Versicherungsprämie erkennen lässt.
 """
 from __future__ import annotations
 
@@ -19,7 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.deps import get_session
-from app.models import ExpenseCategory, ExpenseCategoryRecord
+from app.models import CADENCE_MONTHS, ExpenseCadence, ExpenseCategory, ExpenseCategoryRecord
 from app.money import format_euro, parse_flexible_amount
 from app.svg_charts import line_svg
 
@@ -31,6 +36,23 @@ try:
     templates.env.filters.update(_depots.templates.env.filters)
 except ImportError:
     pass
+
+CADENCE_LABELS = {
+    ExpenseCadence.MONTHLY: "monatlich",
+    ExpenseCadence.QUARTERLY: "quartalsweise",
+    ExpenseCadence.YEARLY: "jährlich",
+}
+CADENCE_UNIT = {
+    ExpenseCadence.MONTHLY: "Monat",
+    ExpenseCadence.QUARTERLY: "Quartal",
+    ExpenseCadence.YEARLY: "Jahr",
+}
+
+
+def monthly_equivalent_cent(cadence: ExpenseCadence, amount_cent: int) -> int:
+    """Rechnet einen Betrag auf sein Monatsäquivalent um (kaufmännisch gerundet)."""
+    months = CADENCE_MONTHS[cadence]
+    return round(amount_cent / months)
 
 
 def _quarter_end(d: date) -> date:
@@ -70,14 +92,16 @@ def _latest_record(session: Session, category_id: int) -> ExpenseCategoryRecord 
     ).scalar_one_or_none()
 
 
-def _totals_by_date(session: Session) -> list[tuple[date, int]]:
-    """Summe aller Kategorien je Stichtag, aufsteigend – Grundlage für den Verlauf."""
+def _monthly_totals_by_date(session: Session, categories_by_id: dict[int, ExpenseCategory]) -> list[tuple[date, int]]:
+    """Monatsäquivalent-Summe aller Kategorien je Stichtag, aufsteigend – Grundlage für den Verlauf."""
     rows = session.execute(
-        select(ExpenseCategoryRecord.snapshot_date, ExpenseCategoryRecord.monthly_amount_cent)
+        select(ExpenseCategoryRecord.snapshot_date, ExpenseCategoryRecord.category_id, ExpenseCategoryRecord.amount_cent)
     ).all()
     totals: dict[date, int] = {}
-    for d, cent in rows:
-        totals[d] = totals.get(d, 0) + cent
+    for d, category_id, cent in rows:
+        cat = categories_by_id.get(category_id)
+        cadence = cat.cadence if cat is not None else ExpenseCadence.MONTHLY
+        totals[d] = totals.get(d, 0) + monthly_equivalent_cent(cadence, cent)
     return sorted(totals.items())
 
 
@@ -89,21 +113,31 @@ def overview(request: Request, session: Session = Depends(get_session)):
             select(ExpenseCategory).where(ExpenseCategory.is_active.is_(False)).order_by(ExpenseCategory.name)
         ).scalars()
     )
+    all_categories = {cat.id: cat for cat in (*categories, *hidden)}
 
     latest = {cat.id: _latest_record(session, cat.id) for cat in categories}
-    rows = [
-        {
+    rows = []
+    for cat in categories:
+        rec = latest[cat.id]
+        if rec is None:
+            rows.append({"category": cat, "cadence_label": CADENCE_LABELS[cat.cadence], "latest": "–",
+                         "monthly_equivalent": None, "latest_date": None})
+            continue
+        equiv = monthly_equivalent_cent(cat.cadence, rec.amount_cent)
+        rows.append({
             "category": cat,
-            "latest": format_euro(latest[cat.id].monthly_amount_cent) if latest[cat.id] else "–",
-            "latest_date": latest[cat.id].snapshot_date.strftime("%d.%m.%Y") if latest[cat.id] else None,
-        }
-        for cat in categories
-    ]
-    known = [r for r in latest.values() if r is not None]
-    total_latest = format_euro(sum(r.monthly_amount_cent for r in known)) if known else "–"
+            "cadence_label": CADENCE_LABELS[cat.cadence],
+            "latest": f"{format_euro(rec.amount_cent)} / {CADENCE_UNIT[cat.cadence]}",
+            "monthly_equivalent": format_euro(equiv) if cat.cadence != ExpenseCadence.MONTHLY else None,
+            "latest_date": rec.snapshot_date.strftime("%d.%m.%Y"),
+        })
 
-    totals = _totals_by_date(session)
-    chart_svg = line_svg(totals, label="Ausgaben pro Monat")
+    known = [(cat, rec) for cat in categories if (rec := latest[cat.id]) is not None]
+    total_latest_cent = sum(monthly_equivalent_cent(cat.cadence, rec.amount_cent) for cat, rec in known)
+    total_latest = format_euro(total_latest_cent) if known else "–"
+
+    totals = _monthly_totals_by_date(session, all_categories)
+    chart_svg = line_svg(totals, label="Ausgaben pro Monat (Äquivalent)")
 
     return templates.TemplateResponse(
         request,
@@ -113,6 +147,8 @@ def overview(request: Request, session: Session = Depends(get_session)):
             "hidden": hidden,
             "total_latest": total_latest,
             "chart_svg": chart_svg,
+            "cadences": list(ExpenseCadence),
+            "cadence_labels": CADENCE_LABELS,
             "ok": request.query_params.get("ok"),
             "error": request.query_params.get("error"),
         },
@@ -120,7 +156,11 @@ def overview(request: Request, session: Session = Depends(get_session)):
 
 
 @router.post("")
-def create_category(name: str = Form(...), session: Session = Depends(get_session)):
+def create_category(
+    name: str = Form(...),
+    cadence: ExpenseCadence = Form(ExpenseCadence.MONTHLY),
+    session: Session = Depends(get_session),
+):
     name = name.strip()
     if not name:
         return _redirect(error="Bitte einen Namen eingeben.")
@@ -128,7 +168,7 @@ def create_category(name: str = Form(...), session: Session = Depends(get_sessio
     if taken is not None:
         hint = " – sie ist ausgeblendet und lässt sich unten wieder einblenden" if not taken.is_active else ""
         return _redirect(error=f"Eine Kategorie „{name}“ gibt es schon{hint}.")
-    session.add(ExpenseCategory(name=name))
+    session.add(ExpenseCategory(name=name, cadence=cadence))
     try:
         session.commit()
     except IntegrityError:
@@ -175,9 +215,9 @@ def _rows(session: Session, target_date: date, submitted=None, errors=None):
         ).scalar_one_or_none()
 
         if existing is not None:
-            default = format_euro(existing.monthly_amount_cent)
+            default = format_euro(existing.amount_cent)
         elif last is not None:
-            default = format_euro(last.monthly_amount_cent)
+            default = format_euro(last.amount_cent)
         else:
             default = "0,00 €"
 
@@ -185,7 +225,8 @@ def _rows(session: Session, target_date: date, submitted=None, errors=None):
         rows.append(
             {
                 "category": category,
-                "previous": format_euro(last.monthly_amount_cent) if last else "–",
+                "unit": CADENCE_UNIT[category.cadence],
+                "previous": format_euro(last.amount_cent) if last else "–",
                 "default": submitted.get(key, default),
                 "error": errors.get(key),
             }
@@ -245,12 +286,10 @@ async def save_records(request: Request, session: Session = Depends(get_session)
             )
         ).scalar_one_or_none()
         if existing is not None:
-            existing.monthly_amount_cent = amount_cent
+            existing.amount_cent = amount_cent
         else:
             session.add(
-                ExpenseCategoryRecord(
-                    category_id=category_id, snapshot_date=target_date, monthly_amount_cent=amount_cent
-                )
+                ExpenseCategoryRecord(category_id=category_id, snapshot_date=target_date, amount_cent=amount_cent)
             )
     session.commit()
     return RedirectResponse(url="/expenses", status_code=303)

@@ -117,6 +117,25 @@ class ExpenseRecord(Base):
     monthly_expenses_cent: Mapped[int] = mapped_column(BigInteger)
 
 
+class ExpenseCadence(str, enum.Enum):
+    """Zahlungsturnus einer Ausgabenkategorie. Bestimmt, worauf sich der erfasste
+    Betrag bezieht (z. B. eine KFZ-Versicherung, die einmal im Jahr fällig wird) –
+    nicht, wie oft du ihn im Stichtagsformular überprüfst oder aktualisierst."""
+
+    MONTHLY = "MONTHLY"      # z. B. Miete, Handyvertrag
+    QUARTERLY = "QUARTERLY"  # z. B. manche Versicherungsbeiträge
+    YEARLY = "YEARLY"        # z. B. KFZ-Versicherung, Rundfunkbeitrag im Voraus
+
+
+# Anzahl Monate je Turnus – Grundlage, um Beträge auf einen Monatswert umzurechnen
+# und so über Kategorien mit unterschiedlichem Turnus hinweg vergleichbar zu machen.
+CADENCE_MONTHS: dict[ExpenseCadence, int] = {
+    ExpenseCadence.MONTHLY: 1,
+    ExpenseCadence.QUARTERLY: 3,
+    ExpenseCadence.YEARLY: 12,
+}
+
+
 class ExpenseCategory(Base):
     """Eine wiederkehrende Ausgabenkategorie, z. B. 'Miete' oder 'KFZ-Versicherung'.
 
@@ -129,6 +148,9 @@ class ExpenseCategory(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True)
+    cadence: Mapped[ExpenseCadence] = mapped_column(
+        _enum(ExpenseCadence, "expense_cadence"), default=ExpenseCadence.MONTHLY
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     note: Mapped[Optional[str]] = mapped_column(String(500), default=None)
 
@@ -138,18 +160,21 @@ class ExpenseCategory(Base):
 
 
 class ExpenseCategoryRecord(Base):
-    """Monatlicher Betrag einer Ausgabenkategorie zu einem Stichtag."""
+    """Betrag einer Ausgabenkategorie zu einem Stichtag – bezogen auf EINEN
+    Zahlungsturnus der Kategorie (siehe ExpenseCategory.cadence), nicht zwingend
+    auf einen Monat. Bei einer jährlichen KFZ-Versicherung steht hier also die
+    Jahresprämie, nicht ein Zwölftel davon."""
 
     __tablename__ = "expense_category_record"
     __table_args__ = (
         UniqueConstraint("category_id", "snapshot_date", name="uq_expense_category_record_date"),
-        CheckConstraint("monthly_amount_cent >= 0", name="ck_expense_category_amount_nonnegative"),
+        CheckConstraint("amount_cent >= 0", name="ck_expense_category_amount_nonnegative"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("expense_category.id", ondelete="RESTRICT"))
     snapshot_date: Mapped[date] = mapped_column(Date)
-    monthly_amount_cent: Mapped[int] = mapped_column(BigInteger)
+    amount_cent: Mapped[int] = mapped_column(BigInteger)
 
     category: Mapped[ExpenseCategory] = relationship(back_populates="records")
 
