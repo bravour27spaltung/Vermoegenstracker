@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "_macros.html" import amount, error_summary %}
+{% block title %}Annahmen – Rente{% endblock %}
+{% block content %}
+<h1>Annahmen für die Rente</h1>
+{{ error_summary(errors) }}
+<form method="post" action="/pensions/settings" novalidate>
+
+<fieldset>
+  <legend>Über dich</legend>
+  <div class="field{% if errors.birth_date %} has-error{% endif %}">
+    <label for="birth_date">Geburtsdatum</label>
+    <input type="date" id="birth_date" name="birth_date" value="{{ v.birth_date }}">
+    {% if errors.birth_date %}<span class="error">{{ errors.birth_date }}</span>{% endif %}
+    <span class="hint">Bestimmt Rentenbeginn, Abzinsung und Besteuerungsanteil.</span>
+  </div>
+  {{ amount('retirement_age', 'Rentenbeginn mit', v, errors, unit='Jahren', short=True,
+            hint='Regelaltersgrenze für Jahrgänge ab 1964: 67.') }}
+  {{ amount('desired', 'Wunscheinkommen im Ruhestand pro Monat', v, errors, placeholder='z. B. 2.500',
+            hint='Was du zum Leben brauchst, in heutigem Geld, <strong>nach</strong> Steuer und Kranken-/Pflegeversicherung.') }}
+  {{ amount('savings', 'Sparrate pro Monat bis zum Rentenbeginn', v, errors, placeholder='z. B. 500') }}
+</fieldset>
+
+<fieldset id="kv">
+  <legend>Krankenversicherung im Ruhestand</legend>
+  <div class="field">
+    <div class="choice">
+      <label><input type="radio" name="health_insurance" value="PKV" {{ 'checked' if v.health_insurance == 'PKV' }} onchange="toggleKv()"> privat (PKV)</label>
+      <label><input type="radio" name="health_insurance" value="GKV" {{ 'checked' if v.health_insurance == 'GKV' }} onchange="toggleKv()"> gesetzlich (GKV)</label>
+    </div>
+    {% if errors.health_insurance %}<span class="error">{{ errors.health_insurance }}</span>{% endif %}
+  </div>
+  <div id="pkv_fields">
+    <div class="field">
+      <span class="label">PKV-Beitrag im Ruhestand</span>
+      <div class="choice">
+        <label><input type="radio" name="pkv_mode" value="PROJECTED" {{ 'checked' if v.get('pkv_mode', 'PROJECTED') == 'PROJECTED' }} onchange="toggleKv()"> aus heutigem Beitrag hochrechnen (empfohlen)</label>
+        <label><input type="radio" name="pkv_mode" value="DIRECT" {{ 'checked' if v.get('pkv_mode') == 'DIRECT' }} onchange="toggleKv()"> selbst schätzen</label>
+      </div>
+    </div>
+
+    <div id="pkv_projected">
+      <p class="hint">Alle Werte pro Monat laut deiner aktuellen Beitragsrechnung, als <strong>Gesamtbeitrag</strong>
+        (vor Arbeitgeberzuschuss; der fällt im Ruhestand weg).</p>
+      {{ amount('pkv_today_total', 'Krankenversicherung heute, gesamt', v, errors, placeholder='z. B. 720',
+                hint='Summe aller Bausteine der Krankenversicherung, ohne Pflegepflichtversicherung.') }}
+      {{ amount('pkv_today_sick_pay', 'davon Krankentagegeld', v, errors, placeholder='z. B. 45',
+                hint='Entfällt im Ruhestand.') }}
+      {{ amount('pkv_today_surcharge', 'davon gesetzlicher 10-%-Zuschlag', v, errors, placeholder='z. B. 60',
+                hint='Endet ab 60 (§ 149 VAG). Das angesparte Geld dämpft ab 65 Beitragserhöhungen.') }}
+      {{ amount('pkv_today_relief_contribution', 'davon Beitrag zum Beitragsentlastungstarif', v, errors, placeholder='z. B. 50',
+                hint='Zahlst du nur bis zum Beginn der Entlastung.') }}
+      {{ amount('pkv_relief_benefit', 'Beitragsentlastung im Ruhestand pro Monat', v, errors, placeholder='z. B. 300',
+                hint='Fester Euro-Betrag laut Vertrag. Wir nehmen an, dass sie mit dem Rentenbeginn startet, und rechnen sie auf heutige Kaufkraft um.') }}
+      {{ amount('pkv_today_care', 'Pflegepflichtversicherung heute', v, errors, placeholder='z. B. 80') }}
+      {{ amount('pkv_real_increase', 'Beitragssteigerung pro Jahr über der Inflation', v, errors, unit='%', short=True,
+                hint='Richtwert 1–2 %. Laut WIP stiegen PKV-Beiträge je Versicherten 2005–2025 um 3,1 % und 2015–2025 um 3,9 % pro Jahr (nominal). Dein Tarif kann deutlich abweichen.') }}
+      <div id="pkv_preview" class="preview" aria-live="polite"></div>
+    </div>
+
+    <div id="pkv_direct">
+      {{ amount('pkv_health', 'PKV-Beitrag Krankenversicherung pro Monat im Ruhestand', v, errors, placeholder='z. B. 650',
+                hint='In heutiger Kaufkraft, nach Beitragsentlastung.') }}
+      {{ amount('pkv_care', 'Private Pflegepflichtversicherung pro Monat im Ruhestand', v, errors, placeholder='z. B. 80') }}
+    </div>
+
+    <details {{ 'open' if errors.pkv_basic_share }}><summary>Steuerlich absetzbarer Anteil</summary>
+      {{ amount('pkv_basic_share', 'Anteil Basisabsicherung am KV-Beitrag im Ruhestand', v, errors, unit='%', short=True,
+                hint='Aus der jährlichen Beitragsbescheinigung des Versicherers. Ohne Krankentagegeld meist 85–95 %; Wahlleistungen wie Chefarzt oder Einbettzimmer zählen nicht dazu.') }}
+    </details>
+    <p class="hint">Die Rentenversicherung zahlt dir einen Zuschuss zur PKV: 8,75 % der gesetzlichen Rente, höchstens den
+      halben KV-Beitrag nach Entlastung. Zur Pflegeversicherung gibt es keinen Zuschuss. Betriebsrenten sind bei PKV beitragsfrei.</p>
+  </div>
+  <p id="gkv_hint" class="hint">Bei GKV werden KV- und Pflegebeiträge auf gesetzliche Rente und Betriebsrente automatisch
+    abgezogen (Beitragssätze 2026).</p>
+</fieldset>
+
+<details {{ 'open' if errors.inflation or errors.real_return or errors.payout_return or errors.payout_years or errors.pension_value }}>
+  <summary>Rechenannahmen (für Fortgeschrittene)</summary>
+  <fieldset>
+    {{ amount('inflation', 'Inflation pro Jahr', v, errors, unit='%', short=True,
+              hint='Zinst nominale Betriebsrenten auf heutige Kaufkraft ab.') }}
+    {{ amount('real_return', 'Rendite nach Inflation, Ansparphase', v, errors, unit='%', short=True) }}
+    {{ amount('payout_return', 'Rendite nach Inflation, Entnahmephase', v, errors, unit='%', short=True) }}
+    {{ amount('payout_years', 'Bezugsdauer', v, errors, unit='Jahre', short=True,
+              hint='Eher lang ansetzen: das Risiko ist, länger zu leben als geplant.') }}
+    {{ amount('pension_value', 'Aktueller Rentenwert', v, errors,
+              hint='42,52 € seit 1.7.2026. Jedes Jahr zum 1. Juli anpassen.') }}
+  </fieldset>
+</details>
+
+<p><button class="btn" type="submit">Speichern</button> <a href="/pensions">Abbrechen</a></p>
+</form>
+
+<script>
+const settingsForm = document.querySelector('form[action="/pensions/settings"]');
+function toggleKv() {
+  const pkv = document.querySelector('input[name=health_insurance]:checked')?.value !== 'GKV';
+  const mode = document.querySelector('input[name=pkv_mode]:checked')?.value || 'PROJECTED';
+  document.getElementById('pkv_fields').style.display = pkv ? '' : 'none';
+  document.getElementById('gkv_hint').style.display = pkv ? 'none' : '';
+  document.getElementById('pkv_projected').style.display = mode === 'PROJECTED' ? '' : 'none';
+  document.getElementById('pkv_direct').style.display = mode === 'DIRECT' ? '' : 'none';
+}
+let pkvTimer;
+function updatePkvPreview() {
+  clearTimeout(pkvTimer);
+  pkvTimer = setTimeout(async () => {
+    const box = document.getElementById('pkv_preview');
+    try {
+      const r = await fetch('/pensions/settings/pkv-preview', { method: 'POST', body: new FormData(settingsForm) });
+      box.innerHTML = r.ok ? await r.text() : '';
+    } catch (e) { box.innerHTML = ''; }
+  }, 300);
+}
+settingsForm.addEventListener('input', updatePkvPreview);
+settingsForm.addEventListener('change', updatePkvPreview);
+toggleKv();
+updatePkvPreview();
+</script>
+{% endblock %}

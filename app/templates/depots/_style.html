@@ -1,0 +1,124 @@
+{# Gemeinsame Styles/Skripte der Depotseiten. Farben angelehnt an base.html (#2b6cb0). #}
+<style>
+  body { max-width: 1120px; }
+  .dp-sub { margin: 0 0 0.6rem; font-size: 0.95rem; }
+  .dp-sub a { margin-right: 1rem; }
+  .dp-sub a.active { font-weight: 700; color: #1a1a1a; text-decoration: none; }
+  .dp-msg { padding: 0.5rem 0.8rem; border-radius: 6px; margin: 0.8rem 0; }
+  .dp-msg.ok { background: #f0fff4; border-left: 4px solid #2f855a; }
+  .dp-msg.err { background: #fff5f5; border-left: 4px solid #c53030; }
+  .tiles.dp-kpis { grid-template-columns: 1.4fr repeat(4, 1fr); }
+  @media (max-width: 860px) { .tiles.dp-kpis { grid-template-columns: repeat(2, 1fr); } }
+  .tile .note { color: #718096; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+  .tile .value { font-variant-numeric: tabular-nums; }
+  .tile.hero .value { font-size: 2rem; }
+  .dp-grid { display: grid; gap: 1rem; grid-template-columns: 1fr 1fr; }
+  .dp-grid.wide { grid-template-columns: 2fr 1fr; }
+  @media (max-width: 860px) { .dp-grid, .dp-grid.wide { grid-template-columns: 1fr; } }
+  .dp-grid > .card { margin: 0; min-width: 0; }
+  .card h2 { font-size: 1.1rem; margin: 0.4rem 0 0.6rem; }
+  .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+  .dp table { font-variant-numeric: tabular-nums; font-size: 0.93rem; }
+  .dp td.right, .dp th.right { white-space: nowrap; }
+  .dp th { font-size: 0.82rem; color: #4a5568; }
+  .scroll { overflow-x: auto; }
+  .isin { color: #718096; font-size: 0.78rem; font-family: ui-monospace, Menlo, monospace; }
+  .tag { display: inline-block; font-size: 0.75rem; padding: 0.05rem 0.45rem; border-radius: 99px; background: #edf2f7; color: #4a5568; }
+  .muted { color: #718096; }
+  .small { font-size: 0.85rem; }
+  .method { color: #4a5568; font-size: 0.85rem; line-height: 1.5; }
+  /* Balken */
+  .bars { display: grid; gap: 0.5rem; }
+  .bar-row { display: grid; grid-template-columns: 9rem 1fr 9.5rem; gap: 0.6rem; align-items: center; font-size: 0.9rem; }
+  .bar-row .track { height: 10px; background: #edf2f7; border-radius: 5px; overflow: hidden; }
+  .bar-row .fill { display: block; height: 100%; background: #2b6cb0; border-radius: 0 4px 4px 0; }
+  .bar-row .val { text-align: right; font-variant-numeric: tabular-nums; color: #4a5568; }
+  .bar-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Hinweise: Icon + Label, nie nur Farbe */
+  .hints { display: grid; gap: 0.5rem; }
+  .hint { display: grid; grid-template-columns: 1.3rem 1fr; gap: 0.5rem; padding: 0.55rem 0.7rem; border-radius: 6px; background: #f7fafc; font-size: 0.9rem; }
+  .hint .ico { width: 1.15rem; height: 1.15rem; border-radius: 50%; display: grid; place-items: center; font-size: 0.75rem; font-weight: 700; color: #fff; margin-top: 0.1rem; }
+  .hint.warn .ico { background: #d69e2e; }
+  .hint.info .ico { background: #2b6cb0; }
+  .hint.ok .ico { background: #2f855a; }
+  /* Charts */
+  .chart-wrap { position: relative; }
+  .chart { width: 100%; height: auto; display: block; overflow: visible; }
+  .chart .grid { stroke: #edf2f7; }
+  .chart .tick { fill: #718096; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .chart .line.s1 { stroke: #2b6cb0; }
+  .chart .line.ref { stroke: #718096; stroke-dasharray: 5 4; stroke-width: 1.5; }
+  .chart .area.s1 { fill: rgba(43, 108, 176, 0.10); }
+  .chart .dot.s1 { fill: #2b6cb0; stroke: #fff; stroke-width: 2; }
+  .chart .band.b1 { fill: #cde2fb; }
+  .chart .band.b2 { fill: #86b6ef; }
+  .chart .dlabel { fill: #4a5568; font-size: 11px; font-weight: 600; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+  .chart .hit { fill: transparent; cursor: crosshair; }
+  .chart .crosshair { stroke: #4a5568; stroke-width: 1; opacity: 0; pointer-events: none; }
+  .tip { position: absolute; pointer-events: none; background: #fff; border: 1px solid #e2e8f0; box-shadow: 0 4px 14px rgba(0,0,0,.12);
+         border-radius: 6px; padding: 0.4rem 0.6rem; font-size: 0.8rem; white-space: nowrap; font-variant-numeric: tabular-nums; opacity: 0; z-index: 3; }
+  .tip b { display: block; }
+  .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; color: #4a5568; margin-top: 0.3rem; }
+  .legend i { display: inline-block; width: 16px; border-top: 2px solid #2b6cb0; vertical-align: middle; margin-right: 0.35rem; }
+  .legend i.ref { border-top: 2px dashed #718096; }
+  .legend i.b1, .legend i.b2 { height: 10px; border: 0; background: #cde2fb; }
+  .legend i.b2 { background: #86b6ef; }
+  /* Formulare */
+  .formgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.6rem 0.8rem; align-items: end; }
+  .formgrid label { display: grid; gap: 0.2rem; font-size: 0.85rem; color: #4a5568; }
+  .formgrid .span2 { grid-column: span 2; }
+  .formgrid input, .formgrid select { padding: 0.35rem; font-size: 0.95rem; min-width: 0; }
+  .formgrid label.check { display: flex; gap: 0.4rem; align-items: center; }
+  .inline-form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: end; }
+  .inline-form label { display: grid; gap: 0.2rem; font-size: 0.85rem; color: #4a5568; }
+  .inline-form input { padding: 0.35rem; font-size: 0.95rem; width: 7rem; }
+  .seg { display: inline-flex; border: 1px solid #cbd5e0; border-radius: 6px; overflow: hidden; }
+  .seg label { display: flex; gap: 0.3rem; align-items: center; padding: 0.3rem 0.6rem; cursor: pointer; font-size: 0.85rem; color: #1a1a1a; }
+  .seg input { display: none; }
+  .seg label:has(input:checked) { background: #ebf4ff; font-weight: 600; }
+  button.link { background: none; border: 0; color: #718096; padding: 0.1rem 0.3rem; font-size: 0.9rem; }
+  button.link:hover { color: #c53030; }
+  .num-in { text-align: right; width: 7.5rem; padding: 0.3rem; font-size: 0.95rem; }
+  .stat-row { display: flex; gap: 1.4rem; flex-wrap: wrap; font-size: 0.85rem; color: #4a5568; margin-top: 0.4rem; }
+  .stat-row b { color: #1a1a1a; }
+  @media (max-width: 700px) {
+    .tiles.dp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tiles.dp-kpis .tile.hero { grid-column: 1 / -1; }
+    .tile.hero .value { font-size: 1.6rem; }
+    .bar-row { grid-template-columns: 6.5rem 1fr 7rem; font-size: 0.82rem; }
+    .dp-sub { display: flex; gap: 0.9rem; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+    .dp-sub a { margin-right: 0; }
+    .formgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .formgrid .span2 { grid-column: 1 / -1; }
+    details form[style*="min-width"] { min-width: 0 !important; }
+    .chart .tick, .chart .dlabel { font-size: 18px; }
+  }
+  .loading { opacity: 0.55; transition: opacity .2s; }
+</style>
+<script>
+// Crosshair + Tooltip für die serverseitigen SVG-Charts
+function dpBindCharts(root) {
+  root.querySelectorAll('.chart-wrap').forEach(function (wrap) {
+    if (wrap.dataset.bound) return; wrap.dataset.bound = 1;
+    var svg = wrap.querySelector('svg'); if (!svg) return;
+    var tip = document.createElement('div'); tip.className = 'tip'; wrap.appendChild(tip);
+    var ch = svg.querySelector('.crosshair');
+    svg.querySelectorAll('.hit').forEach(function (r) {
+      r.addEventListener('mouseenter', function () {
+        var parts = r.dataset.tip.split('|');
+        tip.innerHTML = '<b>' + parts[0] + '</b>' + parts.slice(1).join('<br>');
+        var x = parseFloat(r.dataset.x);
+        if (ch) { ch.setAttribute('x1', x); ch.setAttribute('x2', x); ch.style.opacity = .35; }
+        var px = x * svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+        tip.style.opacity = 1;
+        var w = tip.offsetWidth, left = px + 12;
+        if (left + w > wrap.clientWidth) left = Math.max(px - w - 12, 0);
+        tip.style.left = left + 'px'; tip.style.top = '6px';
+      });
+    });
+    svg.addEventListener('mouseleave', function () { tip.style.opacity = 0; if (ch) ch.style.opacity = 0; });
+  });
+}
+document.addEventListener('DOMContentLoaded', function () { dpBindCharts(document); });
+</script>

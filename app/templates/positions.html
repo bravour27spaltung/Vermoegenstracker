@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Positionen{% endblock %}
+{% block content %}
+<h1>Positionen</h1>
+<p><small>Konten, Immobilien, Kredite und andere Werte, die du von Hand pflegst. Depots (Wertpapiere) legst du unter <a href="/depots">Depots</a> an; ihre Werte berechnet die App selbst.</small></p>
+{% if ok %}<p role="status" class="good">✓ {{ ok }}</p>{% endif %}
+{% if error %}<p role="alert" class="error"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
+
+<table>
+  <thead>
+    <tr><th>Name</th><th>Art</th><th>Klasse</th><th>Liquide</th><th>Ruhestand</th><th>Einzelwert</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for p in positions %}
+    <tr>
+      <td>{{ p.name }}</td>
+      <td>{{ 'Vermögen' if p.kind.value == 'ASSET' else 'Verbindlichkeit' }}</td>
+      <td>{{ class_labels.get(p.asset_class, '–') if p.asset_class else '–' }}</td>
+      <td>{{ 'ja' if p.is_liquid else 'nein' }}</td>
+      <td>{{ 'ja' if p.retirement_relevant else 'nein' }}</td>
+      <td>{{ 'ja' if p.is_single_security else 'nein' }}</td>
+      <td>
+        <details>
+          <summary>Bearbeiten</summary>
+          <form method="post" action="/positions/{{ p.id }}/edit">
+            <p><label>Name<br><input type="text" name="name" value="{{ p.name }}" required></label></p>
+            <p><label>Typ<br>
+              <select name="preset">
+                {% set current = preset_key(p) %}
+                {% for key, pr in presets.items() %}
+                <option value="{{ key }}" {{ 'selected' if key == current }}>{{ pr.label }}</option>
+                {% endfor %}
+              </select></label></p>
+            <p><label><input type="checkbox" name="is_liquid" {{ 'checked' if p.is_liquid }}> kurzfristig verfügbar (liquide)</label></p>
+            <p><label><input type="checkbox" name="retirement_relevant" {{ 'checked' if p.retirement_relevant }}> für den Ruhestand relevant</label></p>
+            <p><label><input type="checkbox" name="is_single_security" {{ 'checked' if p.is_single_security }}> Einzelwert (für Klumpenrisiko)</label></p>
+            <p><button type="submit" class="btn">Speichern</button></p>
+          </form>
+          <form class="inline" method="post" action="/positions/{{ p.id }}/deactivate"
+                onsubmit="return confirm('Position ausblenden? Sie zählt dann nicht mehr zum Nettovermögen, auch nicht im Verlauf. Die erfassten Werte bleiben gespeichert, und du kannst sie hier wieder einblenden.');">
+            <button type="submit">Ausblenden</button>
+          </form>
+        </details>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7">Noch keine Positionen angelegt.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Neue Position</h2>
+<form method="post" action="/positions">
+  <p><label>Name<br><input type="text" name="name" required autofocus placeholder="z. B. Tagesgeld Bank XY"></label></p>
+  <p><label>Typ<br>
+    <select name="preset" id="preset" onchange="applyPreset()">
+      {% for key, p in presets.items() %}
+      <option value="{{ key }}">{{ p.label }}</option>
+      {% endfor %}
+    </select>
+  </label><br><small>Gesetzliche Rente und Betriebsrente bitte unter <a href="/pensions">Rente</a> erfassen. Wertpapierdepots unter <a href="/depots">Depots</a>, sonst zählen sie doppelt.</small></p>
+  <details>
+    <summary>Erweiterte Optionen</summary>
+    <p><label><input type="checkbox" name="is_liquid" id="is_liquid"> kurzfristig verfügbar (liquide)</label></p>
+    <p><label><input type="checkbox" name="retirement_relevant" id="retirement_relevant"> für den Ruhestand relevant</label></p>
+    <p><label><input type="checkbox" name="is_single_security" id="is_single_security"> Einzelwert (für Klumpenrisiko)</label></p>
+  </details>
+  <p><button type="submit">Anlegen</button></p>
+</form>
+
+{% if hidden %}
+<h2>Ausgeblendete Positionen</h2>
+<p><small>Sie zählen nicht zum Nettovermögen. Ihre Werte sind weiter gespeichert.</small></p>
+<table>
+  <tbody>
+    {% for p in hidden %}
+    <tr>
+      <td>{{ p.name }}</td>
+      <td>{{ class_labels.get(p.asset_class, '–') if p.asset_class else 'Verbindlichkeit' }}</td>
+      <td>
+        <form class="inline" method="post" action="/positions/{{ p.id }}/activate">
+          <button type="submit">Wieder einblenden</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<script>
+const PRESET_DEFAULTS = {{ preset_defaults | tojson }};
+
+function applyPreset() {
+  const key = document.getElementById('preset').value;
+  const defaults = PRESET_DEFAULTS[key];
+  if (!defaults) return;
+  document.getElementById('is_liquid').checked = defaults.liquid;
+  document.getElementById('retirement_relevant').checked = defaults.retirement;
+}
+applyPreset();
+</script>
+{% endblock %}

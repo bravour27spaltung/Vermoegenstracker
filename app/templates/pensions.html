@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Rente{% endblock %}
+{% block content %}
+<h1>Rente</h1>
+<p><small>Alle Beträge pro Monat in <strong>heutiger Kaufkraft</strong>. Rentenansprüche zählen nicht zum
+Nettovermögen (nicht verkäuflich, nicht vererbbar, nicht liquide).</small></p>
+
+{% if setup_incomplete %}
+<div class="card">
+  <strong>Einrichtung</strong>
+  <ol class="steps">
+    {% for s in steps %}
+    <li class="{{ 'done' if s.done }}">{{ '✔' if s.done else '○' }}
+      {% if s.done %}{{ s.label }}
+      {% elif s.href %}<a href="{{ s.href }}">{{ s.label }}</a>
+      {% else %}{{ s.label }}: <form class="inline" method="post" action="/pensions/statutory"><button class="btn" type="submit">Jetzt erfassen</button></form>
+      {% endif %}{% if s.optional %} <small>(optional)</small>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+{% endif %}
+
+<div class="tiles">
+  <div class="tile">
+    <div class="label">Verfügbar aus Renten</div>
+    <div class="value">{{ available.exp }}</div>
+    <small>nach Steuer und {{ 'PKV' if health == 'PKV' else 'KV/PV' }}; konservativ {{ available.cons }}</small>
+  </div>
+  <div class="tile">
+    <div class="label">Rentenlücke</div>
+    <div class="value {{ 'good' if gap.exp_zero else '' }}">{{ gap.exp }}</div>
+    <small>{% if has_desired %}bei Wunsch {{ desired }}; konservativ {{ gap.cons }}{% else %}<a href="/pensions/settings">Wunscheinkommen fehlt</a>{% endif %}</small>
+  </div>
+  {% if drawdown %}
+  <div class="tile">
+    <div class="label">Entnahme aus Depots/Vermögen</div>
+    <div class="value">{{ drawdown.exp.net }}</div>
+    <small>netto ab Rentenbeginn; konservativ {{ drawdown.cons.net }}</small>
+  </div>
+  {% endif %}
+  <div class="tile">
+    <div class="label">Deckungsgrad der Lücke</div>
+    <div class="value {{ '' if coverage.exp_ok else 'bad' }}">{{ coverage.exp }}</div>
+    <small>durch dein Vermögen; konservativ {{ coverage.cons }}</small>
+  </div>
+</div>
+
+<h2>Vom Brutto zum verfügbaren Einkommen</h2>
+<table>
+  <thead><tr><th></th>
+    <th class="right">Konservativ<br><small>bAV nur Garantie</small></th>
+    <th class="right">Erwartet<br><small>bAV mit Prognose</small></th></tr></thead>
+  <tbody>
+    {% for r in income_rows %}
+    <tr><td>{{ r.label }}{% if r.hint %}<br><small>{{ r.hint }}</small>{% endif %}</td>
+        <td class="right">{{ r.cons }}</td><td class="right">{{ r.exp }}</td></tr>
+    {% endfor %}
+    <tr class="total"><td>= Verfügbar aus Renten</td><td class="right">{{ available.cons }}</td><td class="right">{{ available.exp }}</td></tr>
+    <tr><td>Wunscheinkommen <small>(nach Steuer und Krankenversicherung)</small></td><td class="right">{{ desired }}</td><td class="right">{{ desired }}</td></tr>
+    <tr class="total"><td>Rentenlücke</td><td class="right">{{ gap.cons }}</td><td class="right">{{ gap.exp }}</td></tr>
+    <tr><td>Kapitalbedarf zum Rentenbeginn</td><td class="right">{{ need.cons }}</td><td class="right">{{ need.exp }}</td></tr>
+    {% if drawdown %}
+    <tr><td>Voraussichtliches Vermögen zum Rentenbeginn<br><small>Depots: ungünstiges Szenario (P10) bzw. Median der Simulation; übrige Positionen mit {{ drawdown.other_return }} real</small></td>
+        <td class="right">{{ drawdown.cons.capital }}</td><td class="right">{{ drawdown.exp.capital }}</td></tr>
+    <tr><td>+ Entnahme aus Depots und Vermögen<br><small>Kapitalverzehr über {{ drawdown.payout_years }} Jahre bei {{ drawdown.payout_return }} real, nach Abgeltungsteuer auf den Gewinnanteil (davon Steuer {{ drawdown.cons.tax }} / {{ drawdown.exp.tax }})</small></td>
+        <td class="right">{{ drawdown.cons.net }}</td><td class="right">{{ drawdown.exp.net }}</td></tr>
+    <tr class="total"><td>Verbleibende Lücke</td>
+        <td class="right {{ 'good' if drawdown.cons.surplus else 'bad' }}">{% if drawdown.cons.surplus %}Überschuss {{ drawdown.cons.surplus }}{% else %}{{ drawdown.cons.remaining }}{% endif %}</td>
+        <td class="right {{ 'good' if drawdown.exp.surplus else 'bad' }}">{% if drawdown.exp.surplus %}Überschuss {{ drawdown.exp.surplus }}{% else %}{{ drawdown.exp.remaining }}{% endif %}</td></tr>
+    {% else %}
+    <tr><td>Voraussichtliches Vermögen zum Rentenbeginn<br><small>ruhestandsrelevante Positionen plus Sparrate</small></td>
+        <td class="right">{{ projected_assets }}</td><td class="right">{{ projected_assets }}</td></tr>
+    {% endif %}
+    <tr><td>Deckungsgrad{% if drawdown %}<br><small>Entnahme ÷ Rentenlücke</small>{% endif %}</td>
+        <td class="right {{ '' if coverage.cons_ok else 'bad' }}">{{ coverage.cons }}</td>
+        <td class="right {{ '' if coverage.exp_ok else 'bad' }}">{{ coverage.exp }}</td></tr>
+  </tbody>
+</table>
+{% if drawdown %}
+<p><small>Vermögen heute: Depots {{ drawdown.depot_today }} (Sparrate {{ drawdown.depot_savings }}/Monat, Median-Rendite {{ drawdown.median_return }} real nach Kosten),
+übrige ruhestandsrelevante Positionen {{ drawdown.other_today }}{% if drawdown.other_names %} ({{ drawdown.other_names | join(', ') }}){% endif %}, Sparrate dafür {{ drawdown.other_savings }}/Monat (Planwert im Profil abzüglich Depot-Sparpläne).
+{% if drawdown.linked %}Mit Depots verknüpfte Positionen ({{ drawdown.linked | join(', ') }}) sind durch die aktuellen Depotwerte ersetzt.{% endif %}
+<a href="/depots">Depots</a> · <a href="/fire">FIRE</a></small></p>
+{% endif %}
+<p><small>Rentenbeginn {{ retirement_year }}{% if years is not none %} (in {{ years }} Jahren){% endif %}.
+Barwert der erwarteten Renten, nur zur Info: {{ claims_at_ret }} zum Rentenbeginn bzw. {{ claims_today }} heute.
+<a href="/pensions/settings">Annahmen ändern</a></small></p>
+
+<h2>Deine Ansprüche</h2>
+<table>
+  <thead><tr><th>Anspruch</th><th>Stand</th><th class="right">Brutto heute</th><th></th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><strong>{{ r.contract.name }}</strong><br><small>{{ r.type_label }}{% if r.contract.vehicle %} · {{ r.contract.vehicle }}{% endif %}{% if r.ep %} · {{ r.ep }} Entgeltpunkte{% endif %}</small>
+        {% for w in r.warnings %}<br><small class="warn">⚠ {{ w }}</small>{% endfor %}</td>
+      <td>{% if r.as_of %}{{ r.as_of }}{% if r.stale %}<br><small class="warn">älter als 1 Jahr</small>{% endif %}{% else %}<small class="warn">noch leer</small>{% endif %}</td>
+      <td class="right">{% if r.same %}{{ r.exp }}{% else %}{{ r.cons }} –<br>{{ r.exp }}{% endif %}</td>
+      <td class="right">
+        <a class="btn {{ '' if (not r.as_of or r.stale) else 'secondary' }}" href="/pensions/{{ r.contract.id }}/snapshots/new">Neuen Stand erfassen</a>
+        <details><summary>Mehr</summary>
+          <a href="/pensions/{{ r.contract.id }}/edit">Bearbeiten</a> ·
+          <form class="inline" method="post" action="/pensions/{{ r.contract.id }}/deactivate"
+                onsubmit="return confirm('Anspruch ausblenden? Erfasste Stände bleiben erhalten.');">
+            <button type="submit">Ausblenden</button>
+          </form>
+        </details>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4">Noch keine Ansprüche erfasst.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p>
+  {% if not statutory %}
+  <form class="inline" method="post" action="/pensions/statutory"><button class="btn" type="submit">+ Gesetzliche Rente</button></form>
+  {% endif %}
+  <a class="btn secondary" href="/pensions/new-occupational">+ Betriebsrente</a>
+</p>
+{% endblock %}

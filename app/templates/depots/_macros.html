@@ -1,0 +1,70 @@
+{% macro subnav(active) %}
+<p class="dp-sub">
+  <a href="/depots" class="{{ 'active' if active == 'overview' }}">Übersicht</a>
+  <a href="/depots/prices" class="{{ 'active' if active == 'prices' }}">Kurse</a>
+  <a href="/depots/securities" class="{{ 'active' if active == 'securities' }}">Wertpapiere</a>
+  <a href="/depots/sync" class="{{ 'active' if active == 'sync' }}">Stichtag übernehmen</a>
+  <a href="/depots/assumptions" class="{{ 'active' if active == 'assumptions' }}">Annahmen &amp; Methodik</a>
+  <a href="/depots/import" class="{{ 'active' if active == 'import' }}">Import/Export</a>
+</p>
+{% endmacro %}
+
+{% macro messages(error, ok) %}
+{% if error %}<p class="dp-msg err" role="alert"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
+{% if ok %}<p class="dp-msg ok" role="status">✓ {{ ok }}</p>{% endif %}
+{% endmacro %}
+
+{% macro kpis(value_cent, net_invested_cent, invested_cent, gain_cent, gain_ratio, xirr, savings_cent, as_of) %}
+<div class="tiles dp-kpis">
+  <div class="tile hero"><div class="label">Depotwert heute</div><div class="value">{{ value_cent | eur(0) }}</div>
+    <div class="note">Stichtag {{ as_of | dt }}</div></div>
+  <div class="tile"><div class="label">Netto eingezahlt</div><div class="value">{{ net_invested_cent | eur(0) }}</div>
+    <div class="note">Käufe inkl. Gebühren {{ invested_cent | eur(0) }}</div></div>
+  <div class="tile"><div class="label">Gewinn/Verlust</div><div class="value {{ gain_cent | tone }}">{{ '+' if gain_cent > 0 }}{{ gain_cent | eur(0) }}</div>
+    <div class="note">{{ gain_ratio | pct(1, true) }} auf Käufe, inkl. Ausschüttungen</div></div>
+  <div class="tile"><div class="label">Rendite p. a. (XIRR)</div><div class="value {{ xirr | tone }}">{{ xirr | pct(1, true) }}</div>
+    <div class="note">geldgewichtet, nominal</div></div>
+  <div class="tile"><div class="label">Sparrate</div><div class="value">{{ savings_cent | eur(0) }}</div>
+    <div class="note">pro Monat (Sparpläne)</div></div>
+</div>
+{% endmacro %}
+
+{% macro hints(list) %}
+<div class="hints">
+  {% for h in list %}
+  <div class="hint {{ h.level }}">
+    <span class="ico" aria-hidden="true">{{ '!' if h.level == 'warn' else ('✓' if h.level == 'ok' else 'i') }}</span>
+    <div><strong>{{ {'warn': 'Warnung', 'info': 'Hinweis', 'ok': 'OK'}[h.level] }} · {{ h.title }}</strong><br><span class="small">{{ h.text }}</span></div>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro bars(items, total, labels=None) %}
+<div class="bars">
+  {% set maxv = (items | map(attribute=1) | max) if items else 1 %}
+  {% for k, v in items %}
+  <div class="bar-row" title="{{ v | eur }}">
+    <span class="name">{{ labels[k] if labels and k in labels else k }}</span>
+    <span class="track"><span class="fill" style="width: {{ (v / maxv * 100) | round(1) }}%"></span></span>
+    <span class="val">{{ (v / total) | pct(1) }} · {{ v | eur(0) }}</span>
+  </div>
+  {% else %}<p class="muted">Keine Positionen.</p>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro tax(a) %}
+<table>
+  <tbody>
+    <tr><td>Unrealisierter G/V nach Teilfreistellung</td><td class="right">{{ a.taxable_cent | eur(0) }}</td></tr>
+    <tr><td>Sparerpauschbetrag</td><td class="right">−{{ a.settings.saver_allowance_cent | eur(0) }}</td></tr>
+    <tr><td>Steuersatz inkl. Soli{{ ' und KiSt' if a.settings.church_tax_rate }}</td><td class="right">{{ a.tax_rate | pct(3) }}</td></tr>
+    <tr><td>Steuer bei Verkauf zum heutigen Stand</td><td class="right bad">−{{ a.latent_tax_cent | eur(0) }}</td></tr>
+    <tr class="total"><td>Wert nach Steuern</td><td class="right">{{ a.after_tax_cent | eur(0) }}</td></tr>
+    <tr><td>Vorabpauschale {{ a.as_of.year }} (steuerpflichtiger Teil, vorläufig)</td><td class="right">{{ a.advance_taxable_cent | eur(0) }}</td></tr>
+    <tr><td>→ Steuer darauf im Januar {{ a.as_of.year + 1 }}, vor Pauschbetrag</td><td class="right">{{ a.advance_tax_cent | eur(0) }}</td></tr>
+  </tbody>
+</table>
+<p class="method">Vereinfachte Schätzung: keine Verlusttöpfe; bereits versteuerte Vorabpauschalen der Vorjahre sind nicht abgezogen (mindern real den Veräußerungsgewinn, § 19 Abs. 1 InvStG). Vorabpauschale mit aktuellem Kurs statt Jahresendkurs.</p>
+{% endmacro %}

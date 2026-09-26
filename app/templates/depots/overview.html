@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% import "depots/_macros.html" as m %}
+{% block title %}Depots{% endblock %}
+{% block head %}{% include "depots/_style.html" %}{% endblock %}
+{% block content %}
+<div class="dp">
+<h1>Depots</h1>
+{{ m.subnav('overview') }}
+{{ m.messages(error, ok) }}
+
+{% if not a.summaries %}
+<div class="card">
+  <h2>Noch kein Depot angelegt</h2>
+  <p>Lege ein Depot an und buche Käufe – oder importiere eine CSV unter <a href="/depots/import">Import/Export</a>.</p>
+  <form method="post" action="/depots" class="formgrid">
+    <label>Name<input type="text" name="name" required placeholder="z. B. Trade Republic"></label>
+    <label>Broker<input type="text" name="broker" placeholder="optional"></label>
+    <label>Sparrate €/Monat<input type="text" inputmode="decimal" name="monthly_savings" value="0"></label>
+    <div><button class="btn">Depot anlegen</button></div>
+  </form>
+</div>
+{% else %}
+
+{{ m.kpis(a.total_cent, a.net_invested_cent, a.invested_cent, a.gain_cent, a.gain_ratio, a.xirr, a.savings_cent, a.as_of) }}
+
+<div class="dp-grid wide">
+  <div class="card">
+    <div class="card-head"><h2>Entwicklung</h2><small>Wert vs. Netto-Einzahlungen</small></div>
+    <div class="chart-wrap">{{ a.series_svg | safe }}</div>
+    <div class="legend"><span><i></i>Depotwert</span><span><i class="ref"></i>Netto-Einzahlungen</span></div>
+  </div>
+  <div class="card">
+    <h2>Hinweise &amp; Lücken</h2>
+    {{ m.hints(a.hints) }}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Depots</h2>
+    <details>
+      <summary>+ Neues Depot</summary>
+      <form method="post" action="/depots" class="formgrid">
+        <label>Name<input type="text" name="name" required></label>
+        <label>Broker<input type="text" name="broker"></label>
+        <label>Sparrate €/Monat<input type="text" inputmode="decimal" name="monthly_savings" value="0"></label>
+        <div><button class="btn">Anlegen</button></div>
+      </form>
+    </details>
+  </div>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Depot</th><th class="right">Wert</th><th class="right">Netto eingezahlt</th><th class="right">G/V</th><th class="right">G/V %</th>
+      <th class="right">XIRR p. a.</th><th class="right">Sparrate</th><th class="right">TER ⌀</th><th class="right">Anteil</th></tr></thead>
+    <tbody>
+    {% for s in a.summaries %}
+      <tr>
+        <td><a href="/depots/{{ s.depot.id }}"><strong>{{ s.depot.name }}</strong></a><div class="isin">{{ s.depot.broker or '—' }} · {{ s.positions | length }} Pos.</div></td>
+        <td class="right"><strong>{{ s.value_cent | eur(0) }}</strong></td>
+        <td class="right">{{ s.net_invested_cent | eur(0) }}</td>
+        <td class="right {{ s.gain_cent | tone }}">{{ '+' if s.gain_cent > 0 }}{{ s.gain_cent | eur(0) }}</td>
+        <td class="right {{ s.gain_ratio | tone }}">{{ s.gain_ratio | pct(1, true) }}</td>
+        <td class="right {{ s.xirr | tone }}">{{ s.xirr | pct(1, true) }}</td>
+        <td class="right">{{ s.depot.monthly_savings_cent | eur(0) }}</td>
+        <td class="right">{{ s.ter | pct(2) }}</td>
+        <td class="right">{{ (s.value_cent / a.total_cent if a.total_cent else 0) | pct(1) }}</td>
+      </tr>
+    {% endfor %}
+      <tr class="total">
+        <td>Summe</td><td class="right">{{ a.total_cent | eur(0) }}</td><td class="right">{{ a.net_invested_cent | eur(0) }}</td>
+        <td class="right {{ a.gain_cent | tone }}">{{ '+' if a.gain_cent > 0 }}{{ a.gain_cent | eur(0) }}</td>
+        <td class="right {{ a.gain_ratio | tone }}">{{ a.gain_ratio | pct(1, true) }}</td>
+        <td class="right {{ a.xirr | tone }}">{{ a.xirr | pct(1, true) }}</td>
+        <td class="right">{{ a.savings_cent | eur(0) }}</td><td class="right">{{ a.ter | pct(2) }}</td><td class="right">100 %</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="stat-row">
+    <span>Realisiert <b>{{ a.realized_cent | eur(0) }}</b></span>
+    <span>Ausschüttungen <b>{{ a.distributions_cent | eur(0) }}</b></span>
+    <span>Aktienquote <b>{{ a.equity_share | pct(1) }}</b>{% if a.settings.equity_target is not none %} (Ziel {{ a.settings.equity_target | pct(0) }}){% else %} · <a href="/depots/assumptions">Ziel festlegen</a>{% endif %}</span>
+  </div>
+</div>
+
+<div class="dp-grid">
+  <div class="card"><h2>Aufteilung nach Anlageklasse</h2>{{ m.bars(a.by_class, a.total_cent, CLASS_LABELS) }}</div>
+  <div class="card"><h2>Aufteilung nach Region</h2>{{ m.bars(a.by_region, a.total_cent) }}</div>
+</div>
+
+{% include "depots/_forecast.html" %}
+
+<div class="card">
+  <div class="card-head"><h2>Alle Positionen</h2><small>über Depots zusammengefasst (gleiche ISIN)</small></div>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Wertpapier</th><th>Depot(s)</th><th>Klasse</th><th class="right">Stück</th><th class="right">Einstand</th>
+      <th class="right">Kurs</th><th class="right">Wert</th><th class="right">G/V</th><th class="right">G/V %</th><th class="right">Anteil</th><th class="right">TER</th></tr></thead>
+    <tbody>
+    {% for p in a.positions %}
+      <tr>
+        <td>{{ p.security.name }}<div class="isin">{{ p.security.isin }} · {{ p.security.region }}</div></td>
+        <td class="small">{{ p.depots | unique | join(', ') }}</td>
+        <td><span class="tag">{{ CLASS_LABELS[p.security.asset_class] }}</span></td>
+        <td class="right">{{ p.quantity | num }}</td>
+        <td class="right">{{ p.cost_cent | eur(0) }}</td>
+        <td class="right">{{ p.price_cent | eur }}<div class="isin">{{ p.price_date | dt }}</div></td>
+        <td class="right"><strong>{{ p.value_cent | eur(0) }}</strong></td>
+        <td class="right {{ p.gain_cent | tone }}">{{ '+' if p.gain_cent > 0 }}{{ p.gain_cent | eur(0) }}</td>
+        <td class="right {{ p.gain_ratio | tone }}">{{ p.gain_ratio | pct(1, true) }}</td>
+        <td class="right">{{ p.share | pct(1) }}</td>
+        <td class="right">{{ p.security.ter | pct(2) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="dp-grid">
+  <div class="card"><h2>Steuern (Schätzung)</h2>{{ m.tax(a) }}</div>
+  <div class="card method">
+    <h2>Kennzahlen</h2>
+    <p><strong>Netto eingezahlt</strong> = Käufe inkl. Gebühren − Verkaufserlöse. <strong>G/V</strong> = Wert + Verkaufserlöse + Ausschüttungen − Käufe.</p>
+    <p><strong>XIRR</strong> = geldgewichtete Rendite (interner Zinsfuß, taggenau). Sie bildet die eigene Anlageerfahrung inklusive Zeitpunkt der Einzahlungen ab. Für den Vergleich mit Indizes wäre die zeitgewichtete Rendite geeigneter (CFA Institute, GIPS 2020).</p>
+    <p><strong>Einstand</strong> nach FIFO (§ 20 Abs. 4 S. 7 EStG), inklusive Kaufgebühren. <strong>Kurse</strong> werden je Stichtag gepflegt; fehlt einer, gilt der letzte Transaktionskurs.</p>
+    <p>Mit <a href="/depots/sync">Stichtag übernehmen</a> fließen Wert und Netto-Einzahlungen je Anlageklasse in die Positionen, also ins Nettovermögen und in die Rentenlücke.</p>
+  </div>
+</div>
+{% endif %}
+</div>
+{% endblock %}

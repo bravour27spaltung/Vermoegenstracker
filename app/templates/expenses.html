@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Ausgaben{% endblock %}
+{% block content %}
+<h1>Wiederkehrende Ausgaben</h1>
+<p><small>Miete, Versicherungen, Abos und Ähnliches nach Kategorie – so siehst du, wie sich einzelne Posten über die Zeit entwickeln (z. B. eine steigende Prämie). Für die Liquiditätsquote im <a href="/jahresupdate">Jahresupdate</a> reicht weiterhin eine einzelne Gesamtsumme; die hier erfassten Kategorien sind unabhängig davon.</small></p>
+{% if ok %}<p role="status" class="good">✓ {{ ok }}</p>{% endif %}
+{% if error %}<p role="alert" class="error"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
+
+<div class="card">
+  <h2>Verlauf</h2>
+  {{ chart_svg | safe }}
+  {% if rows %}<p class="muted">Summe zum letzten Stichtag je Kategorie: <strong>{{ total_latest }}</strong> pro Monat</p>{% endif %}
+</div>
+
+<table>
+  <thead><tr><th>Kategorie</th><th class="right">Letzter Betrag</th><th>Stand</th><th></th></tr></thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td>{{ row.category.name }}</td>
+      <td class="right">{{ row.latest }}</td>
+      <td>{{ row.latest_date or '–' }}</td>
+      <td>
+        <form class="inline" method="post" action="/expenses/{{ row.category.id }}/deactivate"
+              onsubmit="return confirm('Kategorie ausblenden? Erfasste Beträge bleiben gespeichert.');">
+          <button type="submit">Ausblenden</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4">Noch keine Kategorien angelegt.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="/expenses/erfassen" class="btn">Stichtag erfassen</a></p>
+
+<h2>Neue Kategorie</h2>
+<form method="post" action="/expenses">
+  <p><label>Name<br><input type="text" name="name" required autofocus placeholder="z. B. Miete, Haftpflicht, Fitnessstudio"></label></p>
+  <p><button type="submit">Anlegen</button></p>
+</form>
+
+{% if hidden %}
+<h2>Ausgeblendete Kategorien</h2>
+<table>
+  <tbody>
+    {% for cat in hidden %}
+    <tr>
+      <td>{{ cat.name }}</td>
+      <td>
+        <form class="inline" method="post" action="/expenses/{{ cat.id }}/activate">
+          <button type="submit">Wieder einblenden</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

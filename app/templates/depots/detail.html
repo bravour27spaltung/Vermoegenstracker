@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% import "depots/_macros.html" as m %}
+{% block title %}{{ d.name }} · Depots{% endblock %}
+{% block head %}{% include "depots/_style.html" %}{% endblock %}
+{% block content %}
+<div class="dp">
+<p><a href="/depots">← Alle Depots</a></p>
+<div class="card-head">
+  <div>
+    <h1 style="margin-bottom:0">{{ d.name }}{% if not d.is_active %} <small>(ausgeblendet)</small>{% endif %}</h1>
+    <p class="muted" style="margin-top:0.2rem">{{ d.broker or 'Broker nicht angegeben' }}{% if d.note %} · {{ d.note }}{% endif %}</p>
+  </div>
+  <details>
+    <summary>Depot bearbeiten</summary>
+    <form method="post" action="/depots/{{ d.id }}/edit" class="formgrid">
+      <label>Name<input type="text" name="name" value="{{ d.name }}" required></label>
+      <label>Broker<input type="text" name="broker" value="{{ d.broker or '' }}"></label>
+      <label>Sparrate €/Monat<input type="text" inputmode="decimal" name="monthly_savings" value="{{ (d.monthly_savings_cent | eur).removesuffix(' €') }}"></label>
+      <label>Notiz<input type="text" name="note" value="{{ d.note or '' }}"></label>
+      <div><button class="btn">Speichern</button></div>
+    </form>
+    <form method="post" action="/depots/{{ d.id }}/deactivate" onsubmit="return confirm('Depot ausblenden? Transaktionen bleiben erhalten.');" style="margin-top:0.6rem">
+      <button type="submit">Depot ausblenden</button>
+    </form>
+  </details>
+</div>
+{{ m.messages(error, ok) }}
+
+{{ m.kpis(s.value_cent, s.net_invested_cent, s.invested_cent, s.gain_cent, s.gain_ratio, s.xirr, d.monthly_savings_cent, a.as_of) }}
+
+<div class="dp-grid wide">
+  <div class="card">
+    <div class="card-head"><h2>Entwicklung</h2></div>
+    <div class="chart-wrap">{{ a.series_svg | safe }}</div>
+    <div class="legend"><span><i></i>Depotwert</span><span><i class="ref"></i>Netto-Einzahlungen</span></div>
+  </div>
+  <div class="card">
+    <h2>Aufteilung</h2>
+    {{ m.bars(a.by_class, a.total_cent, CLASS_LABELS) }}
+    <h2 style="margin-top:1rem">Hinweise</h2>
+    {{ m.hints(a.hints) }}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Positionen</h2>
+    <small>Realisiert {{ s.realized_cent | eur(0) }} · Ausschüttungen {{ s.distributions_cent | eur(0) }} · TER ⌀ {{ s.ter | pct(2) }}</small></div>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Wertpapier</th><th>Klasse</th><th class="right">Stück</th><th class="right">Einstand</th><th class="right">Kurs</th>
+      <th class="right">Wert</th><th class="right">G/V</th><th class="right">G/V %</th><th class="right">Anteil</th><th class="right">TER</th></tr></thead>
+    <tbody>
+    {% for p in s.positions %}
+      <tr>
+        <td>{{ p.security.name }}<div class="isin">{{ p.security.isin }} · {{ p.security.region }}</div></td>
+        <td><span class="tag">{{ CLASS_LABELS[p.security.asset_class] }}</span></td>
+        <td class="right">{{ p.quantity | num }}</td>
+        <td class="right">{{ p.cost_cent | eur(0) }}</td>
+        <td class="right">{{ p.price_cent | eur }}<div class="isin">{{ p.price_date | dt }}</div></td>
+        <td class="right"><strong>{{ p.value_cent | eur(0) }}</strong></td>
+        <td class="right {{ p.gain_cent | tone }}">{{ '+' if p.gain_cent > 0 }}{{ p.gain_cent | eur(0) }}</td>
+        <td class="right {{ p.gain_ratio | tone }}">{{ p.gain_ratio | pct(1, true) }}</td>
+        <td class="right">{{ p.share | pct(1) }}</td>
+        <td class="right">{{ p.security.ter | pct(2) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10">Noch keine Positionen – unten einen Kauf buchen.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{% include "depots/_forecast.html" %}
+
+<div class="card" id="transactions">
+  <div class="card-head"><h2>Transaktionen</h2><small>{{ txs | length }} Einträge</small></div>
+  <form method="post" action="/depots/{{ d.id }}/transactions" id="txform">
+    <div class="formgrid">
+      <label>Datum<input type="date" name="trade_date" value="{{ today }}" required></label>
+      <label>Art
+        <select name="kind" id="txkind">
+          <option value="BUY">Kauf / Sparplan</option>
+          <option value="SELL">Verkauf</option>
+          <option value="DIVIDEND">Ausschüttung/Dividende</option>
+        </select>
+      </label>
+      <label class="span2">Wertpapier
+        <select name="security_id" id="txsec">
+          {% for sec in securities %}<option value="{{ sec.id }}">{{ sec.name }} ({{ sec.isin }})</option>{% endfor %}
+          <option value="new" {{ 'selected' if not securities }}>+ Neues Wertpapier …</option>
+        </select>
+      </label>
+      <label data-f="trade">Stück<input type="text" inputmode="decimal" name="quantity" placeholder="z. B. 12,3456"></label>
+      <label data-f="trade">Kurs je Stück €<input type="text" inputmode="decimal" name="price" placeholder="z. B. 105,20"></label>
+      <label data-f="trade">Gebühren €<input type="text" inputmode="decimal" name="fee" value="0"></label>
+      <label data-f="div" hidden>Betrag brutto €<input type="text" inputmode="decimal" name="amount" placeholder="vor Steuern"></label>
+      <label>Notiz<input type="text" name="note"></label>
+      <div><button class="btn">Buchen</button></div>
+    </div>
+    <fieldset id="newsec" {{ 'hidden' if securities }}>
+      <legend>Neues Wertpapier</legend>
+      <div class="formgrid">
+        <label>ISIN<input type="text" name="isin" maxlength="12" placeholder="IE00B4L5Y983"></label>
+        <label class="span2">Name<input type="text" name="security_name" placeholder="z. B. iShares Core MSCI World"></label>
+        <label>Anlageklasse<select name="asset_class">{% for c, l in CLASS_LABELS.items() %}<option value="{{ c.value }}">{{ l }}</option>{% endfor %}</select></label>
+        <label>Region<input type="text" name="region" value="Welt"></label>
+        <label>TER % p. a.<input type="text" inputmode="decimal" name="ter" value="0,20"></label>
+        <label>Teilfreistellung<select name="partial_exemption">{% for v, l in EXEMPTIONS %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></label>
+        <label class="check"><input type="checkbox" name="is_fund" value="1" checked> Fonds/ETF</label>
+      </div>
+    </fieldset>
+  </form>
+
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Datum</th><th>Art</th><th>Wertpapier</th><th class="right">Stück</th><th class="right">Kurs</th><th class="right">Gebühren</th><th class="right">Zahlung</th><th></th></tr></thead>
+    <tbody>
+    {% for t in txs %}
+      <tr>
+        <td>{{ t.trade_date | dt }}</td>
+        <td><span class="tag">{{ KIND_LABELS[t.kind] }}</span></td>
+        <td>{{ t.security.name }}<div class="isin">{{ t.security.isin }}{% if t.note %} · <span class="{{ 'warn' if 'Einstand' in t.note }}">{{ t.note }}</span>{% endif %}</div></td>
+        <td class="right">{{ t.quantity | num if t.quantity else '' }}</td>
+        <td class="right">{{ (t.amount_cent / t.quantity) | eur if t.quantity else '' }}</td>
+        <td class="right">{{ t.fee_cent | eur if t.fee_cent else '' }}</td>
+        <td class="right">{% if t.kind.value == 'BUY' %}−{{ (t.amount_cent + t.fee_cent) | eur }}{% elif t.kind.value == 'SELL' %}+{{ (t.amount_cent - t.fee_cent) | eur }}{% else %}+{{ t.amount_cent | eur }}{% endif %}
+          {% if t.tax_cent %}<div class="isin">Steuer {{ t.tax_cent | eur }}</div>{% endif %}</td>
+        <td class="right" style="white-space:nowrap">
+          <details style="display:inline-block;text-align:left" {{ 'open' if t.note and 'Einstand' in t.note and t.amount_cent == 0 }}><summary class="small">Bearbeiten</summary>
+            <form method="post" action="/depots/transactions/{{ t.id }}/edit" class="formgrid" style="min-width:32rem">
+              <label>Datum<input type="date" name="trade_date" value="{{ t.trade_date.isoformat() }}"></label>
+              {% if t.kind.value != 'DIVIDEND' %}
+              <label>Stück<input type="text" inputmode="decimal" name="quantity" value="{{ t.quantity | num(6) }}"></label>
+              <label>{{ 'Einstand/Kurswert gesamt €' if t.kind.value == 'BUY' else 'Kurswert gesamt €' }}<input type="text" inputmode="decimal" name="amount" value="{{ (t.amount_cent | eur).removesuffix(' €') }}"></label>
+              <label>Gebühren €<input type="text" inputmode="decimal" name="fee" value="{{ (t.fee_cent | eur).removesuffix(' €') }}"></label>
+              {% else %}
+              <label>Betrag brutto €<input type="text" inputmode="decimal" name="amount" value="{{ (t.amount_cent | eur).removesuffix(' €') }}"></label>
+              {% endif %}
+              <label class="span2">Notiz<input type="text" name="note" value="{{ t.note or '' }}"></label>
+              <div><button class="btn">Speichern</button></div>
+            </form>
+          </details>
+          <form class="inline" method="post" action="/depots/transactions/{{ t.id }}/delete" onsubmit="return confirm('Transaktion löschen?');">
+            <button class="link" title="Löschen" aria-label="Transaktion löschen">✕</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8">Noch keine Transaktionen.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+</div>
+<script>
+(function () {
+  var kind = document.getElementById('txkind'), sec = document.getElementById('txsec'), ns = document.getElementById('newsec');
+  function upd() {
+    var div = kind.value === 'DIVIDEND';
+    document.querySelectorAll('#txform [data-f=trade]').forEach(function (e) { e.hidden = div; });
+    document.querySelectorAll('#txform [data-f=div]').forEach(function (e) { e.hidden = !div; });
+    ns.hidden = sec.value !== 'new';
+  }
+  kind.addEventListener('change', upd); sec.addEventListener('change', upd); upd();
+})();
+</script>
+{% endblock %}

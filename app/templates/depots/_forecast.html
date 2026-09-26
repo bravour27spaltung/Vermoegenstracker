@@ -1,0 +1,65 @@
+<div id="forecast" class="card">
+  <div class="card-head">
+    <h2>Prognose</h2>
+    <form class="inline-form" id="forecast-form" method="get" action="{{ '/depots/' ~ fc.depot_id if fc.depot_id else '/depots' }}#forecast">
+      {% if fc.depot_id %}<input type="hidden" name="depot" value="{{ fc.depot_id }}">{% endif %}
+      <label>Horizont (Jahre)<input type="text" inputmode="numeric" name="years" value="{{ fc.years }}" style="width:4.5rem"></label>
+      <label>Sparrate €/Monat<input type="text" inputmode="decimal" name="savings" value="{{ fc.savings | round(0) | int }}"></label>
+      <div class="seg" role="radiogroup" aria-label="Darstellung">
+        <label><input type="radio" name="nominal" value="0" {{ 'checked' if not fc.nominal }}>real (heutige Kaufkraft)</label>
+        <label><input type="radio" name="nominal" value="1" {{ 'checked' if fc.nominal }}>nominal</label>
+      </div>
+      <noscript><button>Berechnen</button></noscript>
+    </form>
+  </div>
+  {% if not fc.has_data %}
+    <p class="muted">Für eine Prognose werden ein Depotwert oder eine Sparrate benötigt.</p>
+  {% else %}
+  <div class="chart-wrap">{{ fc.svg | safe }}</div>
+  <div class="legend">
+    <span><i></i>Median (P50)</span>
+    <span><i class="b2"></i>P25–P75 (die mittlere Hälfte der Szenarien)</span>
+    <span><i class="b1"></i>P10–P90 (8 von 10 Szenarien)</span>
+    <span><i class="ref"></i>Eingezahlt{{ ' (nominal)' if fc.nominal }}</span>
+  </div>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Zeitpunkt</th><th class="right">Eingezahlt (real)</th><th class="right">Ungünstig (P10)</th><th class="right">Median (P50)</th><th class="right">Günstig (P90)</th></tr></thead>
+    <tbody>
+    {% for r in fc.rows %}
+      <tr><td>in {{ r.years }} J. ({{ r.year }})</td><td class="right muted">{{ r.contributions | eur_f }}</td>
+        <td class="right">{{ r.p10 | eur_f }}</td><td class="right"><strong>{{ r.p50 | eur_f }}</strong></td><td class="right">{{ r.p90 | eur_f }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="stat-row">
+    <span>Median-Rendite <b>{{ fc.median_return | pct(2) }}</b> p. a. real, nach TER</span>
+    <span>Volatilität <b>{{ fc.sigma | pct(1) }}</b> p. a.</span>
+    <span>Wahrscheinlichkeit Endwert &lt; Einzahlungen <b>{{ fc.fc.prob_below_contributions | pct(0) }}</b></span>
+    <span>{{ fc.paths }} Pfade · Inflation {{ fc.inflation | pct(1) }} (Profil)</span>
+  </div>
+  <p class="method">Monte-Carlo-Simulation mit monatlichen log-normalen Renditen. Rendite und Risiko folgen aus der aktuellen Aufteilung und den
+    <a href="/depots/assumptions">hinterlegten Annahmen</a> (historische Langfristdaten, keine Vorhersage). Vor Steuern. Die Sparrate bleibt real konstant, steigt nominal also mit der Inflation.
+    Extremereignisse und lange Schwächephasen unterschätzt das Modell; das P10-Szenario ist daher eher zu optimistisch.</p>
+  {% endif %}
+</div>
+<script>
+(function () {
+  var box = document.getElementById('forecast'), form = document.getElementById('forecast-form');
+  if (!form || form.dataset.bound) return; form.dataset.bound = 1;
+  function update() {
+    var params = new URLSearchParams(new FormData(form));
+    box.classList.add('loading');
+    fetch('/depots/forecast?' + params.toString()).then(function (r) { return r.text(); }).then(function (html) {
+      var tmp = document.createElement('div'); tmp.innerHTML = html;
+      var fresh = tmp.querySelector('#forecast');
+      box.replaceWith(fresh);
+      tmp.querySelectorAll('script').forEach(function (s) { var n = document.createElement('script'); n.textContent = s.textContent; document.body.appendChild(n); });
+      dpBindCharts(fresh);
+    });
+  }
+  form.addEventListener('change', update);  // Textfelder: beim Verlassen oder mit Enter
+  form.addEventListener('submit', function (e) { e.preventDefault(); update(); });
+})();
+</script>

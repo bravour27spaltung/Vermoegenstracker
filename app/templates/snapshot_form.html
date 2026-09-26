@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Stichtag erfassen{% endblock %}
+{% block content %}
+<h1>Werte zum {{ target_label }}</h1>
+<form method="get" action="/snapshots/new" style="margin:-0.3rem 0 0.8rem">
+  <small>Anderer Stichtag: <input type="date" name="snapshot_date" value="{{ target_date }}" onchange="this.form.submit()"></small>
+</form>
+
+{% if error %}<p class="error" role="alert"><strong>{{ error }}</strong></p>{% endif %}
+{% if warn_unchanged %}
+<div class="card" role="alert" style="border-left:4px solid #b7791f">
+  <strong>Alle Werte sind unverändert.</strong>
+  Die Felder zeigen noch die Werte vom letzten Stand. Stimmen sie wirklich noch, oder fehlen die aktuellen Kontostände?
+  Unten mit „Ja, unverändert speichern“ bestätigen oder die Werte anpassen.
+</div>
+{% endif %}
+<form method="post" action="/snapshots">
+  <input type="hidden" name="snapshot_date" value="{{ target_date }}">
+  {% if warn_unchanged %}<input type="hidden" name="confirm_unchanged" value="1">{% endif %}
+  <table>
+    <thead>
+      <tr><th>Position</th><th class="right">Letzter Wert</th><th>Wert zum {{ target_label }}</th><th>Netto-Einzahlung im Zeitraum</th></tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.position.name }}</td>
+        <td class="right">{{ row.previous_value }}</td>
+        <td{% if row.value_error %} class="has-error"{% endif %}><input type="text" inputmode="decimal" autocomplete="off" name="value_{{ row.position.id }}" value="{{ row.value_default }}" required aria-label="Wert von {{ row.position.name }} zum {{ target_label }}">{% if row.value_error %}<span class="error">{{ row.value_error }}</span>{% endif %}</td>
+        <td{% if row.contribution_error %} class="has-error"{% endif %}><input type="text" inputmode="decimal" autocomplete="off" name="contribution_{{ row.position.id }}" value="{{ row.contribution_default }}" aria-label="Netto-Einzahlung {{ row.position.name }}">{% if row.contribution_error %}<span class="error">{{ row.contribution_error }}</span>{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4">Keine aktiven Positionen. Bitte zuerst <a href="/positions">welche anlegen</a>.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if rows %}<button type="submit" class="btn">{{ 'Ja, unverändert speichern' if warn_unchanged else 'Speichern' }}</button>{% endif %}
+</form>
+{% if depots %}
+<h2>Depots (automatisch)</h2>
+<table>
+  <thead><tr><th>Depot</th><th class="right">Wert zum {{ target_label }}</th></tr></thead>
+  <tbody>{% for d in depots %}<tr><td>{{ d.name }}</td><td class="right">{{ d.value }}</td></tr>{% endfor %}</tbody>
+</table>
+<p><small>Berechnet aus Buchungen und Kursen – nichts eintragen. Fehlt ein Kurs zum Stichtag, gilt der letzte bekannte;
+unter <a href="/depots/prices?price_date={{ target_date }}">Depots → Kurse</a> nachtragen.</small></p>
+{% endif %}
+<p><small>Bei Verbindlichkeiten die Restschuld als positiven Betrag eintragen. Beträge im Format 1.234,56 € (auch 1234,56 oder 1234.56 geht).
+Netto-Einzahlung = Einzahlungen minus Entnahmen seit dem letzten Stichtag (0 lassen, wenn nicht bekannt).</small></p>
+{% endblock %}

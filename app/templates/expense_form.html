@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Ausgaben erfassen{% endblock %}
+{% block content %}
+<h1>Ausgaben zum {{ target_label }}</h1>
+<form method="get" action="/expenses/erfassen" style="margin:-0.3rem 0 0.8rem">
+  <small>Anderer Stichtag: <input type="date" name="snapshot_date" value="{{ target_date }}" onchange="this.form.submit()"></small>
+</form>
+
+{% if error %}<p class="error" role="alert"><strong>{{ error }}</strong></p>{% endif %}
+<form method="post" action="/expenses/erfassen">
+  <input type="hidden" name="snapshot_date" value="{{ target_date }}">
+  <table>
+    <thead>
+      <tr><th>Kategorie</th><th class="right">Letzter Betrag</th><th>€ pro Monat zum {{ target_label }}</th></tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.category.name }}</td>
+        <td class="right">{{ row.previous }}</td>
+        <td{% if row.error %} class="has-error"{% endif %}>
+          <input type="text" inputmode="decimal" autocomplete="off" name="amount_{{ row.category.id }}" value="{{ row.default }}" required aria-label="Betrag {{ row.category.name }} zum {{ target_label }}">
+          {% if row.error %}<span class="error">{{ row.error }}</span>{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3">Keine aktiven Kategorien. Bitte zuerst <a href="/expenses">welche anlegen</a>.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if rows %}<button type="submit" class="btn">Speichern</button>{% endif %}
+</form>
+<p><small>Beträge im Format 45,90 (auch 45.90 geht). Gemeint ist der monatliche Betrag, nicht die Jahressumme.</small></p>
+{% endblock %}

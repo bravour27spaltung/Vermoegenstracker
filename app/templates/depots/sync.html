@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% import "depots/_macros.html" as m %}
+{% block title %}Stichtag übernehmen · Depots{% endblock %}
+{% block head %}{% include "depots/_style.html" %}{% endblock %}
+{% block content %}
+<div class="dp">
+<h1>Stichtag übernehmen</h1>
+{{ m.subnav('sync') }}
+{{ m.messages(error, ok) }}
+<p class="muted">Schreibt Wert und Netto-Einzahlungen je Depot und Anlageklasse als Stichtag in die <a href="/positions">Positionen</a>. So nutzen Nettovermögen und Rentenlücke die Depotdaten, ohne dass du Werte doppelt eintippst. Zeigen mehrere Zeilen auf dieselbe Position, werden sie addiert.</p>
+
+<form class="card" method="get" action="/depots/sync">
+  <div class="inline-form"><label>Stichtag<input type="date" name="snapshot_date" value="{{ target }}" style="width:auto"></label><button type="submit">Anzeigen</button></div>
+  {% if future %}<p class="small warn">Der Stichtag liegt in der Zukunft. Bewertet wird mit den letzten bekannten Kursen – für ein exaktes Quartalsende die Übernahme nach Pflege der Kurse wiederholen.</p>{% endif %}
+</form>
+
+<form class="card" method="post" action="/depots/sync">
+  <input type="hidden" name="snapshot_date" value="{{ target }}">
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Depot</th><th>Anlageklasse</th><th class="right">Wert</th><th class="right">Netto-Einzahlung seit letztem Stichtag</th><th>Ziel-Position</th><th class="right">bisher am Stichtag</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.depot.name }}</td>
+        <td>{{ CLASS_LABELS[r.asset_class] }}</td>
+        <td class="right"><strong>{{ r.value_cent | eur }}</strong></td>
+        <td class="right">{% if r.prev %}{{ r.contribution_cent | eur }}<div class="isin">seit {{ r.prev.snapshot_date | dt }}</div>{% elif r.linked_id %}<span class="muted">erster Stichtag: 0,00 €</span>{% else %}<span class="muted">neue Position: 0,00 €<br>bestehende: ab deren letztem Stichtag</span>{% endif %}</td>
+        <td>
+          <select name="target_{{ r.depot.id }}_{{ r.asset_class.value }}">
+            {% for p in r.candidates %}<option value="{{ p.id }}" {{ 'selected' if r.linked_id == p.id }}>{{ p.name }}</option>{% endfor %}
+            <option value="new" {{ 'selected' if not r.linked_id }}>Neu anlegen: {{ r.new_name }}</option>
+            <option value="skip">nicht übernehmen</option>
+          </select>
+        </td>
+        <td class="right">{{ r.existing.value_cent | eur if r.existing else '–' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6">Keine Depots mit Bestand.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if rows %}<p><button class="btn">Übernehmen</button> <small>Vorhandene Werte am selben Stichtag werden überschrieben.</small></p>{% endif %}
+  <p class="method">Netto-Einzahlung = Käufe inkl. Gebühren − Verkaufserlöse − Ausschüttungen im Zeitraum. Ausschüttungen verlassen das Depot und zählen deshalb als Entnahme; so bleibt die Rendite der Position (Modified Dietz/XIRR) korrekt. Die Netto-Einzahlung bezieht sich auf die Transaktionen der jeweiligen Anlageklasse und den letzten Stichtag der Ziel-Position.</p>
+</form>
+</div>
+{% endblock %}

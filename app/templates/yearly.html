@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Jahresupdate {{ target.year }}{% endblock %}
+{% block head %}{% include "depots/_style.html" %}
+<style>
+  .steps2 { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.6rem; }
+  .steps2 li { display: grid; grid-template-columns: 2rem 1fr auto; gap: 0.8rem; align-items: center;
+               border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.7rem 0.9rem; background: #fff; }
+  .steps2 li.done { background: #f7fafc; }
+  .steps2 .num { width: 1.8rem; height: 1.8rem; border-radius: 50%; display: grid; place-items: center; font-weight: 700;
+                 background: #ebf4ff; color: #2b6cb0; }
+  .steps2 li.done .num { background: #2f855a; color: #fff; }
+  .steps2 .t { font-weight: 600; }
+  .steps2 .d { color: #718096; font-size: 0.85rem; }
+  .progress { height: 10px; background: #edf2f7; border-radius: 5px; overflow: hidden; margin: 0.4rem 0 1rem; }
+  .progress span { display: block; height: 100%; background: #2b6cb0; }
+  @media (max-width: 700px) { .steps2 li { grid-template-columns: 1.8rem 1fr; } .steps2 li .btn { grid-column: 2; justify-self: start; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="dp">
+<h1>Jahresupdate zum 31.12.{{ target.year }}</h1>
+<p class="muted">Einmal im Jahr, am besten im Januar: Kurse und Kontostände zum 31.12. eintragen, Renteninformation und Basiszins aktualisieren. Depotwerte und Einzahlungen berechnet die App selbst.</p>
+{% if error %}<p class="dp-msg err">{{ error }}</p>{% endif %}
+{% if ok %}<p class="dp-msg ok">✓ {{ ok }}</p>{% endif %}
+{% if future %}<p class="dp-msg ok">Der 31.12.{{ target.year }} liegt noch in der Zukunft – du kannst schon vorbereiten, fällig ist das Update ab Januar.</p>{% endif %}
+
+<div class="card">
+  <div class="card-head"><h2>{{ done }} von {{ total }} Pflichtschritten erledigt</h2>
+    <form method="get" action="/jahresupdate" class="inline-form"><label>Jahr
+      <select name="jahr" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {{ 'selected' if y == target.year }}>{{ y }}</option>{% endfor %}</select></label>
+      <noscript><button>Wechseln</button></noscript></form></div>
+  <div class="progress"><span style="width: {{ (done / total * 100) | round | int }}%"></span></div>
+  <ol class="steps2">
+    {% for s in steps %}
+    <li class="{{ 'done' if s.done }}">
+      <span class="num">{{ '✓' if s.done else loop.index }}</span>
+      <div><div class="t">{{ s.title }}{% if s.optional %} <small class="muted">(optional)</small>{% endif %}</div><div class="d">{{ s.detail }}</div></div>
+      <a class="btn {{ 'secondary' if s.done }}" href="{{ s.href }}">{{ 'ansehen' if s.done else 'erledigen' }}</a>
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+
+<form class="card" id="expenses" method="post" action="/jahresupdate/ausgaben">
+  <h2>Monatliche Ausgaben {{ target.year }}</h2>
+  <p class="small muted">Durchschnitt pro Monat (Miete, Leben, Versicherungen) – Grundlage für die Liquiditätsreserve im Dashboard. Ohne Angabe wird das Wunscheinkommen verwendet ({{ expenses_hint }}).</p>
+  <input type="hidden" name="snapshot_date" value="{{ target.isoformat() }}">
+  <div class="inline-form"><label>€ pro Monat<input type="text" inputmode="decimal" name="expenses" value="{{ expenses }}" placeholder="z. B. 2.400"></label>
+    <button class="btn">Speichern</button></div>
+</form>
+
+<div class="card method">
+  <h2>Warum jährlich?</h2>
+  <p>Für die langfristigen Fragen der App – Rentenlücke, FIRE, Allokation – reicht ein Stichtag pro Jahr. Der 31.12. passt zu den Jahressteuerbescheinigungen der Banken, zur Vorabpauschale (Basiszins jeweils Anfang Januar, BMF) und zur jährlichen Renteninformation. Zwischendurch zeigt das Dashboard die Depots trotzdem aktuell, sobald du neue Kurse einträgst oder einen Broker-Export importierst.</p>
+</div>
+</div>
+{% endblock %}

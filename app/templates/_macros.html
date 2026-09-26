@@ -1,0 +1,17 @@
+{# Eingabefeld mit Einheit rechts daneben, Fehlermeldung und Hilfetext. #}
+{% macro amount(name, label, v, errors, hint='', placeholder='', unit='€', autofocus=False, short=False) %}
+<div class="field{% if errors.get(name) %} has-error{% endif %}">
+  <label for="{{ name }}">{{ label }}</label>
+  <span class="unit{% if short %} short{% endif %}">
+    <input type="text" inputmode="decimal" autocomplete="off" id="{{ name }}" name="{{ name }}"
+           value="{{ v.get(name, '') }}" placeholder="{{ placeholder }}" {% if autofocus %}autofocus{% endif %}>
+    <span>{{ unit }}</span>
+  </span>
+  {% if errors.get(name) %}<span class="error">{{ errors[name] }}</span>{% endif %}
+  {% if hint %}<span class="hint">{{ hint | safe }}</span>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro error_summary(errors) %}
+{% if errors %}<p class="error" role="alert"><strong>Bitte die markierten Felder prüfen.</strong></p>{% endif %}
+{% endmacro %}

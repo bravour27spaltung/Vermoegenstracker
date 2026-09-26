@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% import "depots/_macros.html" as m %}
+{% block title %}Kurse · Depots{% endblock %}
+{% block head %}{% include "depots/_style.html" %}{% endblock %}
+{% block content %}
+<div class="dp">
+<h1>Kurse</h1>
+{{ m.subnav('prices') }}
+{{ m.messages(error, ok) }}
+<p class="muted">Einmal pro Quartal den Kurs je Wertpapier zum Stichtag eintragen. Jeder Stichtag bleibt gespeichert und ergibt die Entwicklungskurve. Leere Felder werden übersprungen.</p>
+
+<form class="card" method="get" action="/depots/prices">
+  <div class="inline-form"><label>Stichtag<input type="date" name="price_date" value="{{ target }}" style="width:auto"></label><button type="submit">Anzeigen</button></div>
+</form>
+
+<form class="card" method="post" action="/depots/prices">
+  <input type="hidden" name="price_date" value="{{ target }}">
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Wertpapier</th><th class="right">Letzter Kurs</th><th class="right">vom</th><th class="right">Kurs am {{ target }}</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.security.name }}<div class="isin">{{ r.security.isin }}</div></td>
+        <td class="right">{{ r.last | eur if r.last_date else '–' }}</td>
+        <td class="right muted">{{ r.last_date | dt }}</td>
+        <td class="right"><input class="num-in" type="text" inputmode="decimal" name="price_{{ r.security.id }}"
+            value="{{ (r.existing | eur).removesuffix(' €') if r.existing is not none else '' }}" placeholder="{{ (r.last | eur).removesuffix(' €') if r.last_date else '' }}"> €</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4">Keine Wertpapiere im Bestand.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if rows %}<p><button class="btn">Kurse speichern</button></p>{% endif %}
+</form>
+
+{% if history_dates %}
+<div class="card scroll">
+  <h2>Kurshistorie (letzte {{ history_dates | length }} Stichtage)</h2>
+  <table>
+    <thead><tr><th>Wertpapier</th>{% for d in history_dates %}<th class="right">{{ d | dt }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for sid, m_ in stored.items() %}
+      <tr><td>{{ securities[sid].name }}</td>{% for d in history_dates %}<td class="right">{{ (m_[d] | eur).removesuffix(' €') if d in m_ else '' }}</td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+</div>
+{% endblock %}

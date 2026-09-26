@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% import "depots/_macros.html" as m %}
+{% block title %}Annahmen · Depots{% endblock %}
+{% block head %}{% include "depots/_style.html" %}{% endblock %}
+{% block content %}
+<div class="dp">
+<h1>Annahmen &amp; Methodik</h1>
+{{ m.subnav('assumptions') }}
+{{ m.messages(error, ok) }}
+
+<form method="post" action="/depots/assumptions">
+<div class="dp-grid">
+  <div class="card">
+    <h2>Rendite &amp; Risiko je Anlageklasse</h2>
+    <p class="small muted">Real (nach Inflation), geometrisch p. a. = Median-Wachstum. Vor Kosten (TER wird je Wertpapier abgezogen) und vor Steuern.</p>
+    <table>
+      <thead><tr><th>Klasse</th><th class="right">Rendite real</th><th class="right">Volatilität</th><th>Evidenz</th></tr></thead>
+      <tbody>
+      {% set ev = {'EQUITIES':'B','BONDS':'B','LIQUIDITY':'B','REAL_ESTATE':'D','COMMODITIES':'B/C','CRYPTO':'D','OTHER':'D'} %}
+      {% for c in classes %}
+        <tr><td>{{ CLASS_LABELS[c] }}</td>
+          <td class="right"><input class="num-in" style="width:5rem" name="ret_{{ c.value }}" value="{{ (assumptions[c][0] * 100) | num(2) }}"> %</td>
+          <td class="right"><input class="num-in" style="width:5rem" name="vol_{{ c.value }}" value="{{ (assumptions[c][1] * 100) | num(2) }}"> %</td>
+          <td><span class="tag">{{ ev[c.value] }}</span></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p><button type="submit" name="reset" value="1" formnovalidate>Renditen auf Standard zurücksetzen</button></p>
+  </div>
+  <div class="card">
+    <h2>Steuer</h2>
+    <div class="formgrid">
+      <label>Kirchensteuer<select name="church_tax_rate">{% for v, l in [(0.0,'keine'),(0.08,'8 % (BW, BY)'),(0.09,'9 % (übrige Länder)')] %}<option value="{{ v }}" {{ 'selected' if (s.church_tax_rate - v) | abs < 0.001 }}>{{ l }}</option>{% endfor %}</select></label>
+      <label>Sparerpauschbetrag €<input type="text" inputmode="decimal" name="saver_allowance" value="{{ (s.saver_allowance_cent | eur).removesuffix(' €') }}"></label>
+      <label>Basiszins %<input type="text" inputmode="decimal" name="base_rate" value="{{ (s.base_rate * 100) | num(2) }}"></label>
+      <label>für Jahr<input type="text" inputmode="numeric" name="base_rate_year" value="{{ s.base_rate_year }}"></label>
+    </div>
+    <p class="small">Effektiver Steuersatz: <strong>{{ tax_rate | pct(3) }}</strong></p>
+    <h2>Prüfungen &amp; Prognose</h2>
+    <div class="formgrid">
+      <label>Ziel-Aktienquote Depots %<input type="text" inputmode="decimal" name="equity_target" value="{{ (s.equity_target * 100) | num(1) if s.equity_target is not none else '' }}" placeholder="leer = keine Prüfung"></label>
+      <label>Toleranz ± %<input type="text" inputmode="decimal" name="equity_band" value="{{ (s.equity_band * 100) | num(1) }}"></label>
+      <label>TER-Warnung ab %<input type="text" inputmode="decimal" name="ter_warn" value="{{ (s.ter_warn * 100) | num(2) }}"></label>
+      <label>Monte-Carlo-Pfade<input type="text" inputmode="numeric" name="mc_paths" value="{{ s.mc_paths }}"></label>
+    </div>
+    <p class="small muted">Aus dem Profil übernommen: Inflation {{ profile.inflation_assumption | pct(1) }}, Klumpengrenze {{ profile.concentration_limit | pct(0) }}.</p>
+    <p><button class="btn">Speichern</button></p>
+  </div>
+</div>
+</form>
+
+<div class="card method">
+  <h2>Quellen &amp; Evidenzgrad</h2>
+  <p><strong>A</strong> Gesetz/amtliche Quelle · <strong>B</strong> begutachtete Forschung bzw. etablierter wissenschaftlicher Langfristdatensatz · <strong>C</strong> Praxis-/Branchenstandard · <strong>D</strong> eigene Annahme ohne belastbare Evidenz.</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Parameter</th><th>Standard</th><th>Quelle</th><th>Grad</th></tr></thead>
+    <tbody>
+      <tr><td>Aktien real</td><td>5,0 %</td><td>Dimson, Marsh &amp; Staunton, <em>UBS Global Investment Returns Yearbook 2025</em>: Weltaktien 1900–2024 5,2 % p. a. real, in den letzten 25 Jahren 3,5 %. Leicht abgerundet als Vorsichtsabschlag. Methodik: <em>Triumph of the Optimists</em>, Princeton UP 2002.</td><td>B</td></tr>
+      <tr><td>Anleihen / Geldmarkt real</td><td>1,7 % / 0,5 %</td><td>ebd., 1900–2024.</td><td>B</td></tr>
+      <tr><td>Volatilitäten</td><td>17 / 7 / 1 %</td><td>Größenordnung der historischen Standardabweichungen (Aktien weltweit ≈ 17 %); Anleihen für gemischte Laufzeiten niedriger angesetzt als für Langläufer. <em>Näherung – gegen die Yearbook-Tabellen prüfen.</em></td><td>B/C</td></tr>
+      <tr><td>Gold/Rohstoffe</td><td>1,0 %, 16 %</td><td>Erb &amp; Harvey (2013), „The Golden Dilemma“, <em>Financial Analysts Journal</em> 69(4): langfristig geringe reale Rendite, hohe Schwankung.</td><td>B/C</td></tr>
+      <tr><td>Immobilien (REITs)</td><td>4,0 %, 18 %</td><td>Plausibilitätsannahme zwischen Aktien und Anleihen; Korrelation zu Aktien 0,7.</td><td>D</td></tr>
+      <tr><td>Krypto</td><td>0 %, 70 %</td><td>Historie zu kurz für eine belastbare Schätzung; neutraler Platzhalter mit sehr hoher Schwankung.</td><td>D</td></tr>
+      <tr><td>Korrelationen</td><td>Aktien–Anleihen 0,1 u. a.</td><td>Grobe Annahmen; die Aktien-Anleihen-Korrelation ist historisch instabil (2022 z. B. positiv).</td><td>D</td></tr>
+      <tr><td>Inflation</td><td>Profil</td><td>Standard 2 %: EZB-Strategie 2021, symmetrisches mittelfristiges Inflationsziel.</td><td>A</td></tr>
+      <tr><td>Portfolio-Drift</td><td>Formel</td><td>µ = Σw·ln(1+g) + ½(Σwσ² − σ²ₚ) − ln(1+TER): Diversifikationsrendite bei Rebalancing, Booth &amp; Fama (1992), <em>Financial Analysts Journal</em> 48(3).</td><td>B</td></tr>
+      <tr><td>Abgeltungsteuer</td><td>26,375 %</td><td>§ 32d Abs. 1 EStG (25 %; mit KiSt e/(4+k)), § 4 SolZG, Sparerpauschbetrag § 20 Abs. 9 EStG.</td><td>A</td></tr>
+      <tr><td>Teilfreistellung</td><td>30/15/60/80 %</td><td>§ 20 InvStG.</td><td>A</td></tr>
+      <tr><td>Vorabpauschale</td><td>Basiszins 3,20 %</td><td>§ 18 InvStG; Basiszins zum 2.1.2026 laut BMF-Schreiben vom 13.1.2026. Jährlich im Januar aktualisieren.</td><td>A</td></tr>
+      <tr><td>Einstand</td><td>FIFO</td><td>§ 20 Abs. 4 Satz 7 EStG.</td><td>A</td></tr>
+      <tr><td>Rendite-Kennzahl</td><td>XIRR</td><td>Geldgewichtete Rendite; Abgrenzung zur zeitgewichteten: CFA Institute, <em>GIPS Standards 2020</em>.</td><td>C</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h3>Grenzen des Modells</h3>
+  <ol>
+    <li>Historische Durchschnitte sind keine Prognose; Bewertungsniveau und Zinsumfeld fließen nicht ein.</li>
+    <li>Log-normale Renditen mit festen Parametern unterschätzen Extremereignisse und mehrjährige Schwächephasen.</li>
+    <li>Konstante Gewichte (implizites Rebalancing); Steuern auf Umschichtungen und die jährliche Vorabpauschale sind in der Prognose nicht enthalten.</li>
+    <li>Rendite und Volatilität gelten für breit gestreute Indizes; Einzelaktien tragen deutlich mehr Einzelrisiko.</li>
+  </ol>
+</div>
+</div>
+{% endblock %}

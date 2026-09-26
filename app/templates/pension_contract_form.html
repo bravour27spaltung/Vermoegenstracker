@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import amount, error_summary %}
+{% block title %}{{ 'Anspruch bearbeiten' if contract else 'Neue Betriebsrente' }}{% endblock %}
+{% block content %}
+<h1>{{ 'Anspruch bearbeiten' if contract else 'Neue Betriebsrente' }}</h1>
+{{ error_summary(errors) }}
+<form method="post" action="{{ '/pensions/%d/edit' % contract.id if contract else '/pensions' }}" novalidate>
+  <div class="field{% if errors.name %} has-error{% endif %}">
+    <label for="name">Name</label>
+    <input type="text" id="name" name="name" value="{{ v.name }}" placeholder="z. B. Direktversicherung Firma X" autofocus size="40">
+    {% if errors.name %}<span class="error">{{ errors.name }}</span>{% endif %}
+  </div>
+
+  {% if not contract or contract.pension_type.value == 'OCCUPATIONAL' %}
+  <div class="field">
+    <label for="vehicle">Durchführungsweg</label>
+    <select id="vehicle" name="vehicle">
+      {% for x in vehicles %}<option {{ 'selected' if v.vehicle == x }}>{{ x }}</option>{% endfor %}
+    </select>
+    <span class="hint">Steht oben auf der Standmitteilung. Nur zur Information, die Rechnung ist für alle Wege gleich.</span>
+  </div>
+  <div class="field">
+    <label><input type="checkbox" name="is_vested" {{ 'checked' if v.is_vested }}> Anspruch ist unverfallbar</label>
+    <span class="hint">Bei Entgeltumwandlung immer sofort. Bei rein arbeitgeberfinanzierter bAV nach 3 Jahren Zusage und
+      ab Alter 21 (§ 1b BetrAVG). Verfallbare Ansprüche werden markiert, weil sie bei einem Jobwechsel entfallen können.</span>
+  </div>
+  {% endif %}
+
+  <details {{ 'open' if v.manual_net or errors.net_ratio }}><summary>Netto selbst festlegen (selten nötig)</summary>
+    <div class="field">
+      <label><input type="checkbox" name="manual_net" {{ 'checked' if v.manual_net }}> Pauschale Netto-Quote statt Berechnung</label>
+      <span class="hint">Normalerweise rechnet die App Steuer und Krankenversicherung selbst. Nur für Sonderfälle,
+        z. B. eine Rente aus dem Ausland.</span>
+    </div>
+    {{ amount('net_ratio', 'Netto-Quote', v, errors, unit='%', short=True) }}
+  </details>
+
+  <p><button class="btn" type="submit">{{ 'Speichern' if contract else 'Anlegen und Stand erfassen' }}</button>
+     <a href="/pensions">Abbrechen</a></p>
+</form>
+{% endblock %}

@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+.pytest_cache/
+# Finanzdaten und Backups niemals einchecken
+data/
+*.db
+*.db-wal
+*.db-shm
+_backup_vor_*/
+.DS_Store

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Vermögenstracker{% endblock %}</title>
+  <meta name="theme-color" content="#2b6cb0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Vermögen">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="referrer" content="no-referrer">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+    nav a { margin-right: 1.2rem; text-decoration: none; color: #2b6cb0; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+    th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #e2e8f0; }
+    input[type=text], select { padding: 0.35rem; font-size: 1rem; }
+    button { padding: 0.45rem 0.9rem; cursor: pointer; font-size: 1rem; }
+    .right { text-align: right; }
+    form.inline { display: inline; }
+    small { color: #718096; }
+    .warn { color: #b7791f; }
+    .bad { color: #c53030; }
+    .good { color: #2f855a; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.8rem; margin: 1rem 0; }
+    .tile { border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.8rem 1rem; }
+    .tile .label { color: #4a5568; font-size: 0.9rem; }
+    .tile .value { font-size: 1.5rem; font-weight: 700; margin: 0.2rem 0; }
+    .field { margin: 0.9rem 0; }
+    .field > label, .field > .label { display: block; font-weight: 600; margin-bottom: 0.2rem; }
+    .hint { display: block; color: #718096; font-size: 0.875rem; margin-top: 0.2rem; }
+    .error { display: block; color: #c53030; font-size: 0.875rem; margin-top: 0.2rem; }
+    .has-error input { border: 2px solid #c53030; }
+    .unit { display: inline-flex; align-items: center; gap: 0.35rem; }
+    .unit input { text-align: right; width: 9rem; padding: 0.35rem; font-size: 1rem; }
+    .unit.short input { width: 5rem; }
+    fieldset { border: 1px solid #e2e8f0; border-radius: 8px; margin: 1rem 0; padding: 0.4rem 1rem 0.8rem; }
+    legend { font-weight: 700; padding: 0 0.3rem; }
+    details > summary { cursor: pointer; color: #2b6cb0; margin: 0.6rem 0; }
+    .btn { display: inline-block; padding: 0.45rem 0.9rem; border: 1px solid #2b6cb0; border-radius: 6px;
+           background: #2b6cb0; color: #fff; text-decoration: none; font-size: 1rem; cursor: pointer; }
+    .btn.secondary { background: #fff; color: #2b6cb0; }
+    .preview { background: #f7fafc; border-left: 4px solid #2b6cb0; padding: 0.3rem 1rem; margin: 1rem 0; min-height: 2.5rem; }
+    .steps { list-style: none; padding: 0; }
+    .steps li { margin: 0.4rem 0; }
+    .steps li.done { color: #718096; }
+    .choice { display: flex; gap: 1.2rem; flex-wrap: wrap; font-weight: normal; }
+    .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.6rem 1rem; margin: 1rem 0; }
+    tr.total td { font-weight: 700; border-top: 2px solid #1a1a1a; }
+    /* Handy: Navigation wischbar, breite Tabellen scrollen statt die Seite zu sprengen,
+       Safe-Area für iPhone im Vollbild (Home-Bildschirm). */
+    nav { display: flex; gap: 1.2rem; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch;
+          padding-top: env(safe-area-inset-top); scrollbar-width: none; }
+    nav::-webkit-scrollbar { display: none; }
+    nav a { margin-right: 0; padding: 0.3rem 0; }
+    @media (max-width: 700px) {
+      body { margin: 0.6rem auto; padding: 0 max(0.8rem, env(safe-area-inset-left)) env(safe-area-inset-bottom); font-size: 15px; }
+      h1 { font-size: 1.5rem; margin: 0.8rem 0 0.4rem; }
+      h2 { font-size: 1.15rem; }
+      table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      th, td { padding: 0.45rem 0.4rem; }
+      .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+      .tile { padding: 0.6rem 0.7rem; }
+      .tile .value { font-size: 1.2rem; }
+      input, select, button, .btn { font-size: 16px; }  /* verhindert Auto-Zoom in iOS Safari */
+      .unit input { width: 7.5rem; }
+    }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <nav>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/positions">Positionen</a>
+    <a href="/jahresupdate">Jahresupdate</a>
+    <a href="/depots">Depots</a>
+    <a href="/pensions">Rente</a>
+    <a href="/expenses">Ausgaben</a>
+    <a href="/fire">FIRE</a>
+  </nav>
+  <hr>
+  {% block content %}{% endblock %}
+</body>
+</html>

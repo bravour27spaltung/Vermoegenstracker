@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% import "depots/_macros.html" as m %}
+{% block title %}Import/Export · Depots{% endblock %}
+{% block head %}{% include "depots/_style.html" %}{% endblock %}
+{% block content %}
+<div class="dp">
+<h1>Import &amp; Export</h1>
+{{ m.subnav('import') }}
+
+{% if broker_result %}{% set r = broker_result %}
+<div class="card">
+  <h2>{{ r.broker }}: Import ins Depot „<a href="/depots/{{ r.depot.id }}">{{ r.depot.name }}</a>“</h2>
+  <p class="dp-msg ok">✓ {{ r.added }} Buchung(en) übernommen{% if r.duplicates %}, {{ r.duplicates }} bereits vorhanden und übersprungen{% endif %}.
+    Zeitraum des Exports: {{ r.first_date | dt }} – {{ r.last_date | dt }}.</p>
+  {% if r.estimated %}
+  <div class="dp-msg err">
+    <strong>Bitte prüfen: {{ r.estimated | length }} Einlieferung(en) ohne Kaufkurs</strong> (Depotübertrag von einem anderen Broker).
+    Trade Republic liefert dafür keinen Einstand. Eingesetzt ist der Marktwert zum nächstgelegenen Handelskurs. Für eine korrekte
+    Steuerschätzung den tatsächlichen Einstand aus der Abrechnung des alten Brokers eintragen (Depot → Transaktionen → Bearbeiten).
+    <ul class="small">{% for t in r.estimated %}<li>{{ t.trade_date | dt }} · {{ r.securities[t.isin].name }} · {{ t.quantity | num }} Stück · geschätzt {{ t.amount_cent | eur }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+  {% if r.new_securities %}
+  <p><strong>{{ r.new_securities | length }} neue Wertpapiere angelegt.</strong> Anlageklasse, Region und Teilfreistellung sind aus dem Namen abgeleitet; die <strong>TER fehlt</strong> (0 %).
+    Bitte unter <a href="/depots/securities">Wertpapiere</a> prüfen und ergänzen:</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Wertpapier</th><th>Klasse (Vorschlag)</th><th>Region</th><th class="right">Teilfreistellung</th></tr></thead>
+    <tbody>{% for s in r.new_securities %}<tr><td>{{ s.name }}<div class="isin">{{ s.isin }}</div></td><td>{{ CLASS_LABELS[s.asset_class] }}</td>
+      <td>{{ s.region }}</td><td class="right">{{ s.partial_exemption | pct(0) if s.is_fund else 'kein Fonds' }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+  {% if r.cash_balance_cent is not none %}
+  <p>Guthaben auf dem Verrechnungskonto laut Export: <strong>{{ r.cash_balance_cent | eur }}</strong>
+    <small>(Summe aller Buchungen – stimmt nur, wenn der Export ab Kontoeröffnung reicht; mit der App abgleichen.)</small><br>
+    <small>Das Guthaben gehört nicht ins Depot, sondern als Liquidität in die <a href="/positions">Positionen</a> (<a href="/snapshots/new">Stichtag erfassen</a>).</small></p>
+  {% endif %}
+  {% if r.ignored %}<details><summary>Nicht übernommen (Verrechnungskonto): {{ r.ignored.values() | sum }} Zeilen</summary>
+    <p class="small">{% for k, v in r.ignored | dictsort %}{{ k }}: {{ v }}{{ ', ' if not loop.last }}{% endfor %}</p>
+    <p class="small muted">Überweisungen, Kartenzahlungen, Zinsen, Saveback- und Stockperk-Gutschriften betreffen das Konto. Die daraus finanzierten Käufe sind als Käufe übernommen.</p></details>{% endif %}
+  {% if r.problems %}<p class="dp-msg err">{{ r.problems | join('<br>') | safe }}</p>{% endif %}
+  <p><a class="btn" href="/depots/{{ r.depot.id }}">Zum Depot</a> <a class="btn secondary" href="/depots/prices">Kurse aktualisieren</a></p>
+</div>
+{% endif %}
+
+{% if result %}
+  {% if result.errors %}<div class="dp-msg err"><strong>{{ result.n }} Zeile(n) importiert, {{ result.errors | length }} Fehler:</strong>
+    <ul class="small">{% for e in result.errors[:30] %}<li>{{ e }}</li>{% endfor %}</ul></div>
+  {% else %}<p class="dp-msg ok">✓ {{ result.n }} Zeile(n) importiert.</p>{% endif %}
+{% endif %}
+
+<div class="dp-grid">
+  <form class="card" method="post" action="/depots/import" enctype="multipart/form-data">
+    <h2>CSV importieren</h2>
+    <p><input type="file" name="file" accept=".csv,text/csv" required></p>
+    <div class="formgrid">
+      <label class="span2">Ziel-Depot (für Broker-Exporte)
+        <select name="depot_id" id="depot_id">
+          <option value="new">Neues Depot …</option>
+          {% for d in depots %}<option value="{{ d.id }}" {{ 'selected' if d.broker == 'Trade Republic' or d.name == 'Trade Republic' }}>{{ d.name }}</option>{% endfor %}
+        </select></label>
+      <label id="newname">Name neues Depot<input type="text" name="new_depot_name" value="Trade Republic"></label>
+    </div>
+    <p><button class="btn">Importieren</button></p>
+
+    <h3>Trade Republic</h3>
+    <p class="small">App → Profil → <strong>Kontoauszüge → Transaktionsexport</strong>, Zeitraum ab Kontoeröffnung, Datei unverändert hochladen.
+      Wird automatisch erkannt. Mehrfaches Hochladen ist unkritisch: bekannte Buchungen werden übersprungen.</p>
+
+    <h3>Eigenes Format</h3>
+    <p class="small">Transaktionen: <code>{{ tx_fields | join(';') }}</code><br>
+      typ: kauf | verkauf | dividende · datum: JJJJ-MM-TT · betrag: Kurswert (optional, sonst Stück × Kurs), bei Dividende der Bruttobetrag.<br>
+      Kurse: <code>{{ price_fields | join(';') }}</code></p>
+  </form>
+  <div class="card">
+    <h2>Export</h2>
+    <p><a class="btn secondary" href="/depots/export/transactions.csv">Transaktionen (CSV)</a></p>
+    <p><a class="btn secondary" href="/depots/export/prices.csv">Kurshistorie (CSV)</a></p>
+    <p><a class="btn secondary" href="/depots/api/summary.json">Kennzahlen (JSON)</a></p>
+    <p class="small muted">Die Exporte haben dasselbe Format wie der eigene Import und eignen sich als Sicherung.</p>
+  </div>
+</div>
+</div>
+<script>
+(function () {
+  var sel = document.getElementById('depot_id'), nn = document.getElementById('newname');
+  function upd() { nn.hidden = sel.value !== 'new'; }
+  sel.addEventListener('change', upd); upd();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% from "_macros.html" import amount, error_summary %}
+{% block title %}Stand erfassen – {{ contract.name }}{% endblock %}
+{% block content %}
+<h1>{{ contract.name }}</h1>
+<p>Übertrag die Werte aus deiner {{ 'Renteninformation' if is_statutory else 'Standmitteilung' }}.
+Beträge wie im Schreiben, also brutto. Leere Felder heißen „steht nicht drin“.</p>
+{{ error_summary(errors) }}
+
+<form id="snap" method="post" action="/pensions/{{ contract.id }}/snapshots"
+      data-preview="/pensions/{{ contract.id }}/preview" novalidate>
+
+  <div class="field{% if errors.as_of %} has-error{% endif %}">
+    <label for="as_of">Datum des Schreibens</label>
+    <input type="date" id="as_of" name="as_of" value="{{ v.get('as_of', target_date) }}" onchange="reloadForDate(this.value)">
+    {% if errors.as_of %}<span class="error">{{ errors.as_of }}</span>{% endif %}
+    {% if is_update %}<span class="hint warn">Für dieses Datum gibt es schon einen Stand. Speichern überschreibt ihn.</span>{% endif %}
+  </div>
+
+{% if is_statutory %}
+  {{ amount('projected_monthly', 'Hochgerechnete Regelaltersrente pro Monat', v, errors, placeholder='z. B. 1.631,60', autofocus=True,
+            hint='In der Renteninformation der Betrag „… wenn Sie bis zur Regelaltersgrenze Beiträge wie im Durchschnitt der
+                  letzten fünf Kalenderjahre zahlen“. <strong>Nicht</strong> die Werte mit 1 % oder 2 % Rentenanpassung.') }}
+  <details {{ 'open' if errors.accrued_monthly or errors.earning_points or errors.pension_value }}>
+    <summary>Weitere Angaben (optional)</summary>
+    {{ amount('accrued_monthly', 'Bisher erreichte Rente pro Monat', v, errors,
+              hint='Rente, die du ohne weitere Beiträge bekämst. Wird nur genutzt, wenn keine Hochrechnung da ist.') }}
+    {{ amount('earning_points', 'Bisherige Entgeltpunkte', v, errors, unit='EP', short=True,
+              hint='Aus Rentenauskunft oder Versicherungsverlauf.') }}
+    {{ amount('pension_value', 'Rentenwert zum Datum des Schreibens', v, errors,
+              hint='Automatisch vorbelegt. Damit rechnet die App deine Hochrechnung in Entgeltpunkte um.') }}
+  </details>
+{% else %}
+  <div class="field">
+    <span class="label">Die Mitteilung nennt die Leistung als …</span>
+    <div class="choice">
+      <label><input type="radio" name="benefit_form" value="rente" {{ 'checked' if v.get('benefit_form', 'rente') == 'rente' }} onchange="toggleBenefit()"> monatliche Rente</label>
+      <label><input type="radio" name="benefit_form" value="kapital" {{ 'checked' if v.get('benefit_form') == 'kapital' }} onchange="toggleBenefit()"> einmaliges Kapital</label>
+    </div>
+  </div>
+  <div id="benefit_rente">
+    {{ amount('guaranteed_monthly', 'Garantierte Rente pro Monat', v, errors, placeholder='z. B. 300', autofocus=True) }}
+    {{ amount('projected_monthly', 'Prognostizierte Rente pro Monat', v, errors,
+              hint='Mit Überschüssen, nicht garantiert. Leer lassen, wenn nicht angegeben.') }}
+  </div>
+  <div id="benefit_kapital">
+    {{ amount('guaranteed_capital', 'Garantiertes Kapital', v, errors, placeholder='z. B. 60.000') }}
+    {{ amount('projected_capital', 'Prognostiziertes Kapital', v, errors,
+              hint='Die App rechnet Kapital in eine Monatsrente über die angenommene Bezugsdauer um.') }}
+  </div>
+  <details {{ 'open' if errors.current_value or errors.employee_contribution_pa or errors.employer_contribution_pa }}>
+    <summary>Weitere Angaben (optional)</summary>
+    {{ amount('current_value', 'Aktuelles Guthaben / Deckungskapital', v, errors) }}
+    {{ amount('employee_contribution_pa', 'Dein Beitrag pro Jahr', v, errors) }}
+    {{ amount('employer_contribution_pa', 'Beitrag des Arbeitgebers pro Jahr', v, errors) }}
+    <div class="field">
+      <span class="label">Beträge sind …</span>
+      <div class="choice">
+        <label><input type="radio" name="value_basis" value="NOMINAL" {{ 'checked' if v.get('value_basis', 'NOMINAL') == 'NOMINAL' }}> in Euro des Auszahlungsjahres (Normalfall)</label>
+        <label><input type="radio" name="value_basis" value="REAL" {{ 'checked' if v.get('value_basis') == 'REAL' }}> schon in heutiger Kaufkraft</label>
+      </div>
+    </div>
+  </details>
+{% endif %}
+
+  <div id="preview" class="preview" aria-live="polite"></div>
+  <p><button class="btn" type="submit">Speichern</button> <a href="/pensions">Abbrechen</a></p>
+</form>
+
+{% if history %}
+<h2>Frühere Stände</h2>
+<table>
+  <thead><tr><th>Datum</th>
+  {% if is_statutory %}<th class="right">Entgeltpunkte</th><th class="right">Hochrechnung</th>
+  {% else %}<th class="right">Garantie/Monat</th><th class="right">Prognose/Monat</th><th class="right">Kapital</th><th class="right">Guthaben</th>{% endif %}
+  </tr></thead>
+  <tbody>
+  {% for h in history %}
+    <tr><td><a href="?as_of={{ h.as_of }}">{{ h.as_of_de }}</a></td>
+    {% if is_statutory %}<td class="right">{{ h.ep }}</td><td class="right">{{ h.projected }}</td>
+    {% else %}<td class="right">{{ h.guaranteed }}</td><td class="right">{{ h.projected }}</td><td class="right">{{ h.capital }}</td><td class="right">{{ h.current }}</td>{% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<script>
+const form = document.getElementById('snap');
+const preview = document.getElementById('preview');
+let timer;
+function updatePreview() {
+  clearTimeout(timer);
+  timer = setTimeout(async () => {
+    try {
+      const r = await fetch(form.dataset.preview, { method: 'POST', body: new FormData(form) });
+      preview.innerHTML = r.ok ? await r.text() : '';
+    } catch (e) { preview.innerHTML = ''; }
+  }, 300);
+}
+function toggleBenefit() {
+  const sel = form.querySelector('input[name=benefit_form]:checked');
+  if (!sel) return;
+  document.getElementById('benefit_rente').style.display = sel.value === 'rente' ? '' : 'none';
+  document.getElementById('benefit_kapital').style.display = sel.value === 'kapital' ? '' : 'none';
+}
+function reloadForDate(d) {
+  // Anderes Datum: vorhandenen Stand laden bzw. Rentenwert neu vorbelegen.
+  if (d) window.location.search = '?as_of=' + d;
+}
+form.addEventListener('input', updatePreview);
+form.addEventListener('change', updatePreview);
+toggleBenefit();
+updatePreview();
+</script>
+{% endblock %}

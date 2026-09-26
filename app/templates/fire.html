@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}FIRE{% endblock %}
+{% block head %}{% include "depots/_style.html" %}{% endblock %}
+{% block content %}
+<div class="dp">
+<h1>FIRE – ab wann reicht das Vermögen?</h1>
+<p class="muted">Financial Independence, Retire Early: Ab welchem Alter könntest du aufhören zu arbeiten und von Depot und Vermögen leben, bis die Rente einsetzt – und danach die Rentenlücke schließen? Alle Beträge in heutiger Kaufkraft.</p>
+{% if error %}<p class="dp-msg err" role="alert"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
+{% if ok %}<p class="dp-msg ok" role="status">✓ {{ ok }}</p>{% endif %}
+
+{% if not ready %}
+<div class="card">
+  <h2>Noch nicht genug Daten</h2>
+  <p>{{ missing }}. Bitte unter <a href="/pensions/settings">Rente → Annahmen</a> Geburtsdatum, Rentenalter, Wunscheinkommen und Sparrate eintragen.</p>
+</div>
+{% else %}
+
+<div class="tiles dp-kpis">
+  <div class="tile hero">
+    <div class="label">Frühestes FIRE-Alter</div>
+    <div class="value {{ 'good' if target and target < retirement_age else '' }}">{{ target if target else 'nicht vor ' ~ retirement_age }}</div>
+    <div class="note">mit ≥ {{ (target_success * 100) | round | int }} % Erfolgswahrscheinlichkeit{% if target_year %} · Jahr {{ target_year }}{% endif %}{% if not target and success_at_retirement is not none %} · selbst mit {{ retirement_age }} nur {{ (success_at_retirement * 100) | round | int }} %{% endif %}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Alter bei 50 % Erfolg</div>
+    <div class="value">{{ median_age or '–' }}</div>
+    <div class="note">Münzwurf – nicht als Plan geeignet</div>
+  </div>
+  <div class="tile">
+    <div class="label">Klassische FIRE-Zahl</div>
+    <div class="value">{{ classic }}</div>
+    <div class="note">Fortschritt {{ ((classic_progress or 0) * 100) | round(0) | int }} % · Entnahmerate {{ withdrawal }}</div>
+  </div>
+  <div class="tile">
+    <div class="label">Coast FIRE</div>
+    <div class="value {{ 'good' if coast_reached }}">{{ coast }}</div>
+    <div class="note">{{ 'erreicht ✓' if coast_reached else 'noch nicht erreicht' }} – ab hier deckt das Depot die Rentenlücke ohne weiteres Sparen</div>
+  </div>
+  <div class="tile">
+    <div class="label">Investierbar heute</div>
+    <div class="value">{{ start }}</div>
+    <div class="note">+ {{ savings }}/Monat Sparrate</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Erfolgswahrscheinlichkeit nach Ausstiegsalter</h2>
+    <small>1.000 simulierte Renditepfade · Vermögen muss bis {{ horizon }} reichen</small></div>
+  <div class="chart-wrap">{{ curve_svg | safe }}</div>
+  <div class="legend"><span><i></i>Anteil der Pfade, in denen das Geld bis {{ horizon }} reicht</span><span><i class="ref"></i>Zielwert</span></div>
+  <p class="method">Lesebeispiel: Ein Wert von 80 % bei Alter 55 heißt, dass bei Ausstieg mit 55 das Vermögen in 8 von 10 simulierten Marktverläufen bis {{ horizon }} reicht und in 2 von 10 vorher aufgebraucht ist.</p>
+</div>
+
+<div class="dp-grid">
+  <div class="card">
+    <h2>Annahmen dieser Rechnung</h2>
+    <table>
+      <tbody>
+        <tr><td>Ausgaben nach Ausstieg (netto, ohne KV)</td><td class="right">{{ spending }}/Monat</td></tr>
+        <tr><td>+ Kranken- und Pflegeversicherung<br><small>{{ health_source }}; steigt real um {{ health_growth }} p. a.</small></td><td class="right">{{ health }}/Monat</td></tr>
+        <tr><td>Jahresbedarf heute netto → brutto vor Steuer<br><small>Abgeltungsteuer {{ tax_rate }} auf den Gewinnanteil, Teilfreistellung {{ exemption }}, Pauschbetrag {{ allowance }}</small></td>
+          <td class="right">{{ annual_net }} → {{ annual_gross }}</td></tr>
+        <tr><td>Ab Rentenbeginn ({{ retirement_age }})</td><td class="right">nur noch die Rentenlücke</td></tr>
+        <tr><td>Investierbares Vermögen<br><small>Depots {{ depot_value }} + übrige ruhestandsrelevante Positionen {{ other_value }} (ohne Riester/Rürup/Rentenversicherung)</small></td><td class="right">{{ start }}</td></tr>
+        <tr><td>Sparrate bis zum Ausstieg<br><small>Planwert aus dem Profil</small></td><td class="right">{{ savings }}/Monat</td></tr>
+        <tr><td>Rendite und Risiko<br><small>aus der Depot-Allokation und den <a href="/depots/assumptions">Depot-Annahmen</a>, real nach Kosten</small></td><td class="right">Median {{ median_return }}, σ {{ sigma }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Rente bei früherem Ausstieg</h2>
+    <table>
+      <thead><tr><th>Ausstieg mit</th><th class="right">Anteil gesetzl. Rente/bAV</th><th class="right">verfügbar ab {{ retirement_age }}</th><th class="right">Rentenlücke</th></tr></thead>
+      <tbody>{% for r in pension_rows %}
+        <tr><td>{{ r.age }}</td><td class="right">{{ (r.share * 100) | round | int }} %</td><td class="right">{{ r.available }}</td><td class="right">{{ r.gap }}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+    <p class="method">Ohne Beiträge nach dem Ausstieg wachsen die Entgeltpunkte nicht weiter; die Hochrechnung der Renteninformation unterstellt Beiträge bis {{ retirement_age }}. Angenommen ist ein linearer Aufbau{% if accrued_known %} ab der bisher erreichten Rente{% else %} ab Alter {{ fs.career_start_age }} – genauer wird es, wenn du die <em>bisher erreichte Rente</em> aus der Renteninformation unter <a href="/pensions">Rente</a> erfasst{% endif %}. Die bAV wird mit demselben Anteil gekürzt.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Stellschrauben: Sparrate und Ausgaben</h2>
+  <p class="small muted">Frühestes FIRE-Alter mit ≥ {{ (target_success * 100) | round | int }} % Erfolgswahrscheinlichkeit. Ausgaben = Lebenshaltung netto ohne Krankenversicherung, gilt vor und nach Rentenbeginn.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Sparrate pro Monat</th>{% for l in factor_labels %}<th class="right">Ausgaben {{ l }}{% if loop.first %} <small>(heute)</small>{% endif %}</th>{% endfor %}</tr></thead>
+    <tbody>{% for v in variants %}
+      <tr><td>{{ v.savings }}{% if v.extra %} <small>(+{{ v.extra }} €)</small>{% endif %}</td>
+        {% for a in v.ages %}<td class="right">{% if a %}<strong>{{ a }}</strong>{% else %}<span class="muted">nicht vor {{ retirement_age }}</span>{% endif %}</td>{% endfor %}</tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<form class="card" method="post" action="/fire/settings">
+  <h2>Einstellungen</h2>
+  <div class="formgrid" style="grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr))">
+    <label>Ausgaben netto €/Monat<input type="text" inputmode="decimal" name="spending" value="{{ ('%.2f' | format(fs.spending_monthly_cent / 100) | replace('.', ',')) if fs.spending_monthly_cent is not none else '' }}" placeholder="leer = Wunscheinkommen"></label>
+    <label>Kranken-/Pflegeversicherung €/Monat<input type="text" inputmode="decimal" name="health" value="{{ ('%.2f' | format(fs.health_monthly_cent / 100) | replace('.', ',')) if fs.health_monthly_cent is not none else '' }}" placeholder="leer = aus PKV-Angaben"></label>
+    <label>Entnahmerate % (klassische FIRE-Zahl)<input type="text" inputmode="decimal" name="withdrawal_rate" value="{{ '%.2f' | format(profile.withdrawal_rate * 100) | replace('.', ',') }}"></label>
+    <label>Geforderte Erfolgswahrscheinlichkeit %<input type="text" inputmode="decimal" name="target_success" value="{{ (fs.target_success * 100) | round | int }}"></label>
+    <label>Geld soll reichen bis Alter<input type="text" inputmode="numeric" name="horizon_age" value="{{ fs.horizon_age }}"></label>
+    <label>Beginn Beitragsjahre (falls bisher erreichte Rente fehlt)<input type="text" inputmode="numeric" name="career_start_age" value="{{ fs.career_start_age }}"></label>
+    <div><button class="btn">Speichern</button></div>
+  </div>
+  <p class="small muted">Geburtsdatum, Rentenalter, Wunscheinkommen, Sparrate und PKV-Beiträge stehen unter <a href="/pensions/settings">Rente → Annahmen</a>.</p>
+</form>
+
+<div class="card method">
+  <h2>Methodik &amp; Quellen</h2>
+  <p><strong>Monte-Carlo statt fester Regel.</strong> Je Ausstiegsalter werden 1.000 Renditepfade simuliert (jährlich, log-normal, Parameter aus Depot-Allokation und Langfristdaten nach Dimson/Marsh/Staunton, <em>UBS Global Investment Returns Yearbook 2025</em>). Bis zum Ausstieg fließt die Sparrate zu, danach wird jährlich der Bedarf entnommen – bis zum Rentenbeginn die vollen Ausgaben, danach die Rentenlücke. Erfolg heißt: Das Vermögen reicht bis zum Planungshorizont. So wird das Reihenfolgerisiko (schlechte Jahre kurz nach dem Ausstieg) sichtbar, das eine feste Entnahmerate nicht zeigt.</p>
+  <p><strong>Klassische FIRE-Zahl und Entnahmerate.</strong> Die „4-%-Regel“ stammt aus US-Daten für 30 Jahre Entnahme (Bengen 1994, <em>Journal of Financial Planning</em>; Cooley, Hubbard &amp; Walz 1998, „Trinity-Studie“). Mit Daten aus 38 Industrieländern ergibt sich für ein 65-jähriges Paar bei 5 % Ruinwahrscheinlichkeit nur 2,31 % (Anarkulova, Cederburg, O'Doherty &amp; Sias 2025, <em>Journal of Pension Economics &amp; Finance</em> 24(3)). Bei einem frühen Ausstieg ist der Zeitraum noch länger; die klassische FIRE-Zahl ist daher nur ein Richtwert.</p>
+  <p><strong>Coast FIRE</strong> = Kapital, das ohne weitere Einzahlungen bis zum Rentenbeginn (Median-Rendite) auf die Summe wächst, mit der die Rentenlücke bei voller Rente über die Entnahmerate gedeckt ist.</p>
+  <p><strong>Steuer:</strong> Abgeltungsteuer nur auf den Gewinnanteil der Entnahme, nach Teilfreistellung und Sparerpauschbetrag (§§ 20, 32d EStG; § 20 InvStG). Bei PKV sind Kapitalerträge beitragsfrei; bei freiwilliger GKV wären sie beitragspflichtig (§ 240 SGB V) – dann den KV-Betrag oben höher ansetzen.</p>
+  <p><strong>Grenzen:</strong> keine Sterbetafel (fester Horizont), keine Extremereignisse jenseits der Normalverteilung, konstante Allokation, keine Erbschaften, Nebeneinkünfte oder freiwilligen Rentenbeiträge. Riester/Rürup und private Rentenversicherungen sind vor Rentenbeginn nicht verfügbar und hier nicht enthalten.</p>
+</div>
+</div>
+{% endblock %}

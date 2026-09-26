@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% import "depots/_macros.html" as m %}
+{% block title %}Dashboard{% endblock %}
+{% block head %}{% include "depots/_style.html" %}
+<style>
+  .badge { display: inline-block; font-size: 0.72rem; padding: 0.05rem 0.45rem; border-radius: 99px; white-space: nowrap; }
+  .badge.live { background: #e6f4ea; color: #1e6b34; }
+  .badge.snap { background: #edf2f7; color: #4a5568; }
+  .badge.none { background: #fff5f5; color: #c53030; }
+  .progress { height: 8px; background: #edf2f7; border-radius: 4px; overflow: hidden; margin: 0.5rem 0 0.3rem; }
+  .progress span { display: block; height: 100%; background: #2b6cb0; border-radius: 0 4px 4px 0; }
+  .quick { display: grid; gap: 0.5rem; }
+  .quick a { display: flex; justify-content: space-between; gap: 1rem; padding: 0.55rem 0.7rem; border-radius: 6px; background: #f7fafc; text-decoration: none; color: #1a1a1a; }
+  .quick a:hover { background: #ebf4ff; }
+  .quick a span { color: #718096; font-size: 0.85rem; }
+  td .sub { color: #718096; font-size: 0.78rem; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="dp">
+<h1>Vermögen</h1>
+<p class="muted" style="margin-top:-0.3rem">Stand {{ ov.today.strftime('%d.%m.%Y') }} · Depots live aus Kursen und Buchungen, übrige Werte vom letzten Stichtag</p>
+
+{% if not ov.rows %}
+<div class="card">
+  <h2>Los geht’s</h2>
+  <p>Lege <a href="/positions">Positionen</a> an (Konten, Immobilie, Kredite) oder importiere ein <a href="/depots/import">Depot</a>.</p>
+</div>
+{% else %}
+
+<div class="tiles dp-kpis">
+  <div class="tile hero">
+    <div class="label">Nettovermögen</div>
+    <div class="value">{{ ov.net_cent | eur(0) }}</div>
+    <div class="note">{% if ov.change_cent is not none %}<span class="{{ ov.change_cent | tone }}">{{ '+' if ov.change_cent > 0 }}{{ ov.change_cent | eur(0) }} ({{ ov.change_ratio | pct(1, true) }})</span> seit 31.12.{{ ov.reference.year }}{% else %}noch kein Wert zum 31.12.{{ ov.reference.year }}{% endif %}</div>
+  </div>
+  <div class="tile"><div class="label">Vermögen</div><div class="value">{{ ov.assets_cent | eur(0) }}</div>
+    <div class="note">Verbindlichkeiten {{ ov.liabilities_cent | eur(0) }}</div></div>
+  <div class="tile"><div class="label">Depots (live)</div><div class="value">{{ ov.depot_cent | eur(0) }}</div>
+    <div class="note"><a href="/depots">Details, Rendite, Prognose</a></div></div>
+  <div class="tile"><div class="label">Liquidität</div><div class="value">{{ ov.liquid_cent | eur(0) }}</div>
+    <div class="note">{% if ov.liquid_months is not none %}<span class="{{ '' if ov.liquid_months >= ov.emergency_target_months else 'bad' }}">{{ '%.1f' | format(ov.liquid_months) | replace('.', ',') }} Monate</span> · Ziel {{ ov.emergency_target_months | int }}{% else %}Ausgaben fehlen{% endif %}</div></div>
+  <div class="tile"><div class="label">Jahresupdate {{ due.year }}</div>
+    <div class="value {{ 'good' if steps_done == steps_total }}">{{ steps_done }}/{{ steps_total }}</div>
+    <div class="progress"><span style="width: {{ (steps_done / steps_total * 100) | round | int }}%"></span></div>
+    <div class="note"><a href="/jahresupdate">{{ 'fertig ✓' if steps_done == steps_total else ('jetzt nachtragen' if due_past else 'ab Januar') }}</a></div></div>
+</div>
+
+<div class="dp-grid wide">
+  <div class="card">
+    <div class="card-head"><h2>Nettovermögen im Verlauf</h2><small>je Stichtag, Depots zum jeweiligen Datum berechnet</small></div>
+    <div class="chart-wrap">{{ chart_svg | safe }}</div>
+  </div>
+  <div class="card">
+    <h2>Hinweise &amp; Lücken</h2>
+    {{ m.hints(ov.hints) }}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Vermögenswerte</h2><a href="/positions" class="small">+ Position anlegen</a></div>
+  <div class="scroll"><table>
+    <thead><tr><th>Name</th><th>Stand</th><th class="right">Wert</th><th class="right">seit 31.12.{{ ov.reference.year }}</th><th class="right">Anteil</th></tr></thead>
+    <tbody>
+    {% for r in assets %}
+      <tr>
+        <td><a href="{{ r.href }}">{{ r.name }}</a><div class="sub">{{ r.detail if r.source == 'depot' else CLASS_LABEL(r.asset_class) }}{% if r.is_liquid %} · liquide{% endif %}</div></td>
+        <td>{% if r.source == 'depot' %}<span class="badge live">live</span>{% elif r.source == 'snapshot' %}<span class="badge snap">{{ r.as_of.strftime('%d.%m.%Y') }}</span>{% else %}<span class="badge none">fehlt</span>{% endif %}</td>
+        <td class="right"><strong>{{ r.value_cent | eur(0) }}</strong></td>
+        <td class="right {{ r.change_cent | tone }}">{% if r.change_cent is not none %}{{ '+' if r.change_cent > 0 }}{{ r.change_cent | eur(0) }}{% else %}<span class="muted">–</span>{% endif %}</td>
+        <td class="right">{{ (r.value_cent / ov.assets_cent if ov.assets_cent else 0) | pct(1) }}</td>
+      </tr>
+    {% endfor %}
+    {% for r in liabilities %}
+      <tr>
+        <td><a href="{{ r.href }}">{{ r.name }}</a><div class="sub">Verbindlichkeit</div></td>
+        <td>{% if r.as_of %}<span class="badge snap">{{ r.as_of.strftime('%d.%m.%Y') }}</span>{% else %}<span class="badge none">fehlt</span>{% endif %}</td>
+        <td class="right bad">−{{ r.value_cent | eur(0) }}</td>
+        <td class="right">{% if r.change_cent is not none %}{{ '+' if r.change_cent > 0 }}{{ r.change_cent | eur(0) }}{% endif %}</td>
+        <td></td>
+      </tr>
+    {% endfor %}
+      <tr class="total"><td>Nettovermögen</td><td></td><td class="right">{{ ov.net_cent | eur(0) }}</td>
+        <td class="right {{ ov.change_cent | tone }}">{% if ov.change_cent is not none %}{{ '+' if ov.change_cent > 0 }}{{ ov.change_cent | eur(0) }}{% endif %}</td><td></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="dp-grid">
+  <div class="card"><h2>Aufteilung nach Anlageklasse</h2>{{ m.bars(ov.by_class, ov.assets_cent) }}</div>
+  <div class="card">
+    <h2>Weiter zu</h2>
+    <div class="quick">
+      <a href="/pensions">Rente &amp; Rentenlücke <span>inkl. Entnahme aus Depots</span></a>
+      <a href="/fire">FIRE <span>ab wann reicht das Vermögen?</span></a>
+      <a href="/depots">Depots <span>Positionen, Rendite, Steuer</span></a>
+      <a href="/jahresupdate">Jahresupdate {{ due.year }} <span>{{ steps_done }}/{{ steps_total }} erledigt</span></a>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Stichtage</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Datum</th><th class="right">Nettovermögen</th><th class="right">Veränderung</th></tr></thead>
+    <tbody>{% for h in history %}
+      <tr><td>{{ 'heute' if h.is_today else h.date.strftime('%d.%m.%Y') }}</td><td class="right">{{ h.value | eur(0) }}</td>
+        <td class="right {{ h.change | tone }}">{% if h.change is not none %}{{ '+' if h.change > 0 }}{{ h.change | eur(0) }}{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  <p class="method">Fehlt eine Position an einem Stichtag, zählt ihr letzter bekannter Wert. Ausgeblendete Positionen zählen nicht. Mit Depots verknüpfte Positionen werden durch die berechneten Depotwerte ersetzt.</p>
+</div>
+{% endif %}
+</div>
+{% endblock %}
