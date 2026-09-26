@@ -24,8 +24,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.deps import get_session
-from app.models import CADENCE_MONTHS, ExpenseCadence, ExpenseCategory, ExpenseCategoryRecord
+from app.models import ExpenseCadence, ExpenseCategory, ExpenseCategoryRecord
 from app.money import format_euro, parse_flexible_amount
+from app.overview import build_overview, monthly_equivalent_cent
 from app.svg_charts import line_svg
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
@@ -47,12 +48,6 @@ CADENCE_UNIT = {
     ExpenseCadence.QUARTERLY: "Quartal",
     ExpenseCadence.YEARLY: "Jahr",
 }
-
-
-def monthly_equivalent_cent(cadence: ExpenseCadence, amount_cent: int) -> int:
-    """Rechnet einen Betrag auf sein Monatsäquivalent um (kaufmännisch gerundet)."""
-    months = CADENCE_MONTHS[cadence]
-    return round(amount_cent / months)
 
 
 def _quarter_end(d: date) -> date:
@@ -135,9 +130,19 @@ def overview(request: Request, session: Session = Depends(get_session)):
     known = [(cat, rec) for cat in categories if (rec := latest[cat.id]) is not None]
     total_latest_cent = sum(monthly_equivalent_cent(cat.cadence, rec.amount_cent) for cat, rec in known)
     total_latest = format_euro(total_latest_cent) if known else "–"
+    largest = max(known, key=lambda kr: monthly_equivalent_cent(kr[0].cadence, kr[1].amount_cent), default=None)
+    largest_label = (
+        f"{largest[0].name} ({format_euro(monthly_equivalent_cent(largest[0].cadence, largest[1].amount_cent))} / Monat)"
+        if largest else "–"
+    )
 
     totals = _monthly_totals_by_date(session, all_categories)
     chart_svg = line_svg(totals, label="Ausgaben pro Monat (Äquivalent)")
+
+    # Speist diese Summe gerade die Liquiditätsreserve im Dashboard, oder überschreibt sie
+    # eine explizite Angabe im Jahresupdate? Siehe app.overview.build_overview()-Fallback.
+    ov = build_overview(session)
+    feeds_liquidity = ov.expenses_source.startswith("Summe der Ausgaben-Kategorien")
 
     return templates.TemplateResponse(
         request,
@@ -146,9 +151,16 @@ def overview(request: Request, session: Session = Depends(get_session)):
             "rows": rows,
             "hidden": hidden,
             "total_latest": total_latest,
+            "total_latest_cent": total_latest_cent,
+            "active_count": len(categories),
+            "known_count": len(known),
+            "largest_label": largest_label,
             "chart_svg": chart_svg,
             "cadences": list(ExpenseCadence),
             "cadence_labels": CADENCE_LABELS,
+            "feeds_liquidity": feeds_liquidity,
+            "liquidity_source": ov.expenses_source,
+            "liquidity_amount": format_euro(ov.monthly_expenses_cent),
             "ok": request.query_params.get("ok"),
             "error": request.query_params.get("error"),
         },

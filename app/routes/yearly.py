@@ -34,8 +34,8 @@ def year_update(request: Request, jahr: int | None = None, session: Session = De
         target=target, steps=steps, done=sum(s.done for s in required), total=len(required),
         future=target > date.today(), years=list(range(date.today().year, date.today().year - 6, -1)),
         expenses=format_euro(record.monthly_expenses_cent).removesuffix(" €") if record else "",
-        expenses_hint=format_euro(ov.monthly_expenses_cent), ok=request.query_params.get("ok"),
-        error=request.query_params.get("error"),
+        expenses_hint=format_euro(ov.monthly_expenses_cent), expenses_source=ov.expenses_source,
+        ok=request.query_params.get("ok"), error=request.query_params.get("error"),
     ))
 
 

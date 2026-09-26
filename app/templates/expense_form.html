@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Ausgaben erfassen{% endblock %}
+{% block head %}{% include "depots/_style.html" %}{% endblock %}
 {% block content %}
+<div class="dp">
 <h1>Ausgaben zum {{ target_label }}</h1>
 <form method="get" action="/expenses/erfassen" style="margin:-0.3rem 0 0.8rem">
   <small>Anderer Stichtag: <input type="date" name="snapshot_date" value="{{ target_date }}" onchange="this.form.submit()"></small>
 </form>
 
 {% if error %}<p class="error" role="alert"><strong>{{ error }}</strong></p>{% endif %}
+<div class="card">
 <form method="post" action="/expenses/erfassen">
   <input type="hidden" name="snapshot_date" value="{{ target_date }}">
   <table>
@@ -20,7 +23,7 @@
         <td class="right">{{ row.previous }}</td>
         <td{% if row.error %} class="has-error"{% endif %}>
           <input type="text" inputmode="decimal" autocomplete="off" name="amount_{{ row.category.id }}" value="{{ row.default }}" required aria-label="Betrag {{ row.category.name }} zum {{ target_label }}">
-          <span class="sub">€ pro {{ row.unit }}</span>
+          <span class="dp-sub">€ pro {{ row.unit }}</span>
           {% if row.error %}<span class="error">{{ row.error }}</span>{% endif %}
         </td>
       </tr>
@@ -31,5 +34,7 @@
   </table>
   {% if rows %}<button type="submit" class="btn">Speichern</button>{% endif %}
 </form>
-<p><small>Beträge im Format 45,90 (auch 45.90 geht). Bei „€ pro Quartal“ bzw. „€ pro Jahr“ ist die volle Zahlung gemeint (z. B. die Jahresprämie), nicht der Monatsanteil – den rechnet die Übersicht selbst aus.</small></p>
+</div>
+<p><small class="muted">Beträge im Format 45,90 (auch 45.90 geht). Bei „€ pro Quartal“ bzw. „€ pro Jahr“ ist die volle Zahlung gemeint (z. B. die Jahresprämie), nicht der Monatsanteil – den rechnet die Übersicht selbst aus.</small></p>
+</div>
 {% endblock %}

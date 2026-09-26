@@ -43,7 +43,7 @@
 
 <form class="card" id="expenses" method="post" action="/jahresupdate/ausgaben">
   <h2>Monatliche Ausgaben {{ target.year }}</h2>
-  <p class="small muted">Durchschnitt pro Monat (Miete, Leben, Versicherungen) – Grundlage für die Liquiditätsreserve im Dashboard. Ohne Angabe wird das Wunscheinkommen verwendet ({{ expenses_hint }}).</p>
+  <p class="small muted">Durchschnitt pro Monat (Miete, Leben, Versicherungen) – Grundlage für die Liquiditätsreserve im Dashboard. Ohne eigene Angabe hier gilt ersatzweise: {{ expenses_source }} ({{ expenses_hint }}). Auch <a href="/expenses">einzelne Ausgaben-Kategorien</a> fließen automatisch ein, solange hier nichts eingetragen ist.</p>
   <input type="hidden" name="snapshot_date" value="{{ target.isoformat() }}">
   <div class="inline-form"><label>€ pro Monat<input type="text" inputmode="decimal" name="expenses" value="{{ expenses }}" placeholder="z. B. 2.400"></label>
     <button class="btn">Speichern</button></div>

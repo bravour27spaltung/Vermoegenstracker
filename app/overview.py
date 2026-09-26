@@ -20,11 +20,15 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import depot as calc
 from app.models import (
+    CADENCE_MONTHS,
     AssetClass,
     Depot,
     DepotPositionLink,
     DepotSettings,
     DepotTransaction,
+    ExpenseCadence,
+    ExpenseCategory,
+    ExpenseCategoryRecord,
     ExpenseRecord,
     PensionContract,
     PensionSnapshot,
@@ -46,6 +50,45 @@ CLASS_LABELS = {
 
 def year_end(year: int) -> date:
     return date(year, 12, 31)
+
+
+def monthly_equivalent_cent(cadence: ExpenseCadence, amount_cent: int) -> int:
+    """Rechnet einen Betrag auf sein Monatsäquivalent um (kaufmännisch gerundet).
+
+    Kanonischer Ort dieser Umrechnung – von app.routes.expenses importiert, damit
+    Übersicht und Kategorien-Modul garantiert dieselbe Regel verwenden.
+    """
+    months = CADENCE_MONTHS[cadence]
+    return round(amount_cent / months)
+
+
+def categories_monthly_total(session: Session) -> tuple[int, date] | None:
+    """Monatsäquivalent-Summe aus den Ausgaben-Kategorien (aktive, mit mindestens einem Wert).
+
+    Für jede aktive Kategorie zählt der jeweils letzte erfasste Betrag, umgerechnet aufs
+    Monatsäquivalent (siehe monthly_equivalent_cent). None, wenn keine aktive Kategorie
+    bislang einen Wert hat – dann greift die nächste Stufe des Fallbacks in build_overview().
+    """
+    categories = session.execute(
+        select(ExpenseCategory).where(ExpenseCategory.is_active.is_(True))
+    ).scalars().all()
+    total = 0
+    latest_date: date | None = None
+    found = False
+    for cat in categories:
+        rec = session.execute(
+            select(ExpenseCategoryRecord)
+            .where(ExpenseCategoryRecord.category_id == cat.id)
+            .order_by(ExpenseCategoryRecord.snapshot_date.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if rec is None:
+            continue
+        found = True
+        total += monthly_equivalent_cent(cat.cadence, rec.amount_cent)
+        if latest_date is None or rec.snapshot_date > latest_date:
+            latest_date = rec.snapshot_date
+    return (total, latest_date) if found else None
 
 
 def linked_position_ids(session: Session) -> set[int]:
@@ -259,6 +302,9 @@ def build_overview(session: Session, today: date | None = None) -> Overview:
     record = session.execute(select(ExpenseRecord).order_by(ExpenseRecord.snapshot_date.desc()).limit(1)).scalar_one_or_none()
     if record:
         expenses, source = record.monthly_expenses_cent, f"Ausgaben laut Jahresupdate {record.snapshot_date:%Y}"
+    elif (cat_total := categories_monthly_total(session)) is not None:
+        cat_cent, cat_date = cat_total
+        expenses, source = cat_cent, f"Summe der Ausgaben-Kategorien (Stand {cat_date:%d.%m.%Y})"
     else:
         expenses, source = profile.desired_income_monthly_cent, "Wunscheinkommen als Näherung"
 

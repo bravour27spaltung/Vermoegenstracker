@@ -1,25 +1,42 @@
 {% extends "base.html" %}
 {% block title %}Ausgaben{% endblock %}
+{% block head %}{% include "depots/_style.html" %}{% endblock %}
 {% block content %}
+<div class="dp">
 <h1>Wiederkehrende Ausgaben</h1>
-<p><small>Miete, Versicherungen, Abos und Ähnliches nach Kategorie – so siehst du, wie sich einzelne Posten über die Zeit entwickeln (z. B. eine steigende Prämie). Jede Kategorie hat einen Turnus; für Verlauf und Summe wird alles auf ein Monatsäquivalent umgerechnet, damit z. B. eine jährliche KFZ-Versicherung mit der monatlichen Miete vergleichbar ist. Für die Liquiditätsquote im <a href="/jahresupdate">Jahresupdate</a> reicht weiterhin eine einzelne Gesamtsumme; das ist unabhängig von den hier erfassten Kategorien.</small></p>
+<p class="muted" style="margin-top:-0.3rem">Miete, Versicherungen, Abos und Ähnliches nach Kategorie – so siehst du, wie sich einzelne Posten über die Zeit entwickeln (z. B. eine steigende Prämie).</p>
+<p><small>Jede Kategorie hat einen Turnus; für Verlauf und Summe wird alles auf ein Monatsäquivalent umgerechnet, damit z. B. eine jährliche KFZ-Versicherung mit der monatlichen Miete vergleichbar ist.</small></p>
 {% if ok %}<p role="status" class="good">✓ {{ ok }}</p>{% endif %}
 {% if error %}<p role="alert" class="error"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
 
-<div class="card">
-  <h2>Verlauf</h2>
-  {{ chart_svg | safe }}
-  {% if rows %}<p class="muted">Monatsäquivalent-Summe zum letzten Stichtag je Kategorie: <strong>{{ total_latest }}</strong> pro Monat</p>{% endif %}
+<div class="tiles dp-kpis">
+  <div class="tile hero">
+    <div class="label">Monatsäquivalent-Summe</div>
+    <div class="value">{{ total_latest }}</div>
+    <div class="note">{{ known_count }} von {{ active_count }} Kategorien mit erfasstem Betrag</div>
+  </div>
+  <div class="tile"><div class="label">Aktive Kategorien</div><div class="value">{{ active_count }}</div>
+    <div class="note">{{ hidden | length }} ausgeblendet</div></div>
+  <div class="tile"><div class="label">Größte Kategorie</div><div class="value" style="font-size:1.05rem">{{ largest_label }}</div></div>
+  <div class="tile"><div class="label">Liquiditätsreserve-Basis</div>
+    <div class="value {{ 'good' if feeds_liquidity }}" style="font-size:1.05rem">{{ liquidity_amount }}</div>
+    <div class="note">{% if feeds_liquidity %}wird aus dieser Summe gespeist{% else %}aktuell: {{ liquidity_source }} – <a href="/jahresupdate#expenses">Jahresupdate</a>{% endif %}</div></div>
 </div>
 
+<div class="card">
+  <div class="card-head"><h2>Verlauf</h2><small>Monatsäquivalent je Stichtag, über alle Kategorien summiert</small></div>
+  <div class="chart-wrap">{{ chart_svg | safe }}</div>
+</div>
+
+<div class="card">
 <table>
   <thead><tr><th>Kategorie</th><th>Turnus</th><th class="right">Letzter Betrag</th><th>Stand</th><th></th></tr></thead>
   <tbody>
     {% for row in rows %}
     <tr>
       <td>{{ row.category.name }}</td>
-      <td>{{ row.cadence_label }}</td>
-      <td class="right">{{ row.latest }}{% if row.monthly_equivalent %}<br><span class="sub">≈ {{ row.monthly_equivalent }} / Monat</span>{% endif %}</td>
+      <td><span class="tag">{{ row.cadence_label }}</span></td>
+      <td class="right">{{ row.latest }}{% if row.monthly_equivalent %}<br><span class="dp-sub">≈ {{ row.monthly_equivalent }} / Monat</span>{% endif %}</td>
       <td>{{ row.latest_date or '–' }}</td>
       <td>
         <form class="inline" method="post" action="/expenses/{{ row.category.id }}/deactivate"
@@ -33,37 +50,47 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 
 <p><a href="/expenses/erfassen" class="btn">Stichtag erfassen</a></p>
 
-<h2>Neue Kategorie</h2>
-<form method="post" action="/expenses">
-  <p><label>Name<br><input type="text" name="name" required autofocus placeholder="z. B. Miete, Haftpflicht, KFZ-Versicherung"></label></p>
-  <p><label>Turnus<br>
-    <select name="cadence">
-      {% for c in cadences %}
-      <option value="{{ c.value }}" {{ 'selected' if c.value == 'MONTHLY' }}>{{ cadence_labels[c] }}</option>
-      {% endfor %}
-    </select>
-  </label><br><small>Wie oft die Zahlung fällig wird – der Betrag, den du unter „Stichtag erfassen“ einträgst, bezieht sich auf eine Zahlung in diesem Turnus (bei „jährlich“ also die Jahresprämie, nicht ein Zwölftel davon).</small></p>
-  <p><button type="submit">Anlegen</button></p>
-</form>
+<div class="dp-grid">
+  <div class="card">
+    <h2>Neue Kategorie</h2>
+    <form method="post" action="/expenses" class="formgrid">
+      <p><label>Name<br><input type="text" name="name" required autofocus placeholder="z. B. Miete, Haftpflicht, KFZ-Versicherung"></label></p>
+      <p><label>Turnus<br>
+        <select name="cadence">
+          {% for c in cadences %}
+          <option value="{{ c.value }}" {{ 'selected' if c.value == 'MONTHLY' }}>{{ cadence_labels[c] }}</option>
+          {% endfor %}
+        </select>
+      </label><br><small class="muted">Wie oft die Zahlung fällig wird – der Betrag, den du unter „Stichtag erfassen“ einträgst, bezieht sich auf eine Zahlung in diesem Turnus (bei „jährlich“ also die Jahresprämie, nicht ein Zwölftel davon).</small></p>
+      <p><button type="submit" class="btn">Anlegen</button></p>
+    </form>
+  </div>
 
-{% if hidden %}
-<h2>Ausgeblendete Kategorien</h2>
-<table>
-  <tbody>
-    {% for cat in hidden %}
-    <tr>
-      <td>{{ cat.name }}</td>
-      <td>
-        <form class="inline" method="post" action="/expenses/{{ cat.id }}/activate">
-          <button type="submit">Wieder einblenden</button>
-        </form>
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% endif %}
+  {% if hidden %}
+  <div class="card">
+    <h2>Ausgeblendete Kategorien</h2>
+    <table>
+      <tbody>
+        {% for cat in hidden %}
+        <tr>
+          <td>{{ cat.name }}</td>
+          <td>
+            <form class="inline" method="post" action="/expenses/{{ cat.id }}/activate">
+              <button type="submit">Wieder einblenden</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<p><small class="muted">Für die Liquiditätsquote im <a href="/jahresupdate">Jahresupdate</a> reicht eine einzelne Gesamtsumme – trägst du dort einen eigenen Wert ein, hat er Vorrang vor dieser Kategorien-Summe. Ohne eigene Angabe dort wird automatisch diese Summe verwendet, sonst ersatzweise das Wunscheinkommen.</small></p>
+</div>
 {% endblock %}
