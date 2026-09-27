@@ -1,11 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Ausgaben{% endblock %}
-{% block head %}{% include "depots/_style.html" %}{% endblock %}
+{% block head %}{% include "depots/_style.html" %}
+<style>
+  .exp-row input[type=text] { width: 100%; box-sizing: border-box; }
+  .exp-row select { width: 100%; }
+  .exp-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .exp-actions button { white-space: nowrap; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="dp">
 <h1>Wiederkehrende Ausgaben</h1>
 <p class="muted" style="margin-top:-0.3rem">Miete, Versicherungen, Abos und Ähnliches nach Kategorie – so siehst du, wie sich einzelne Posten über die Zeit entwickeln (z. B. eine steigende Prämie).</p>
-<p><small>Jede Kategorie hat einen Turnus; für Verlauf und Summe wird alles auf ein Monatsäquivalent umgerechnet, damit z. B. eine jährliche KFZ-Versicherung mit der monatlichen Miete vergleichbar ist.</small></p>
+<p><small>Jede Kategorie hat einen Turnus; für Verlauf und Summe wird alles auf ein Monatsäquivalent umgerechnet, damit z. B. eine jährliche KFZ-Versicherung mit der monatlichen Miete vergleichbar ist. Name, Turnus und Betrag änderst du direkt in der Tabelle – „Speichern“ trägt den Betrag zum heutigen Tag ({{ today }}) ein.</small></p>
 {% if ok %}<p role="status" class="good">✓ {{ ok }}</p>{% endif %}
 {% if error %}<p role="alert" class="error"><strong>Fehler:</strong> {{ error }}</p>{% endif %}
 
@@ -29,45 +36,66 @@
 </div>
 
 <div class="card">
+{# Ein <form> darf laut HTML-Spec kein direktes Kind von <tr>/<tbody> sein - deshalb
+   liegen die eigentlichen Formulare hier separat, und jedes Feld in der Tabelle
+   verweist per form="cat-<id>" darauf (funktioniert unabhängig von der Position im Dokument). #}
+{% for row in rows %}
+<form id="cat-{{ row.category.id }}" method="post" action="/expenses/{{ row.category.id }}"></form>
+{% endfor %}
 <table>
-  <thead><tr><th>Kategorie</th><th>Turnus</th><th class="right">Letzter Betrag</th><th>Stand</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Turnus</th><th>Betrag</th><th>Stand</th><th></th></tr></thead>
   <tbody>
     {% for row in rows %}
-    <tr>
-      <td>{{ row.category.name }}</td>
-      <td><span class="tag">{{ row.cadence_label }}</span></td>
-      <td class="right">{{ row.latest }}{% if row.monthly_equivalent %}<br><span class="dp-sub">≈ {{ row.monthly_equivalent }} / Monat</span>{% endif %}</td>
-      <td>{{ row.latest_date or '–' }}</td>
+    <tr class="exp-row">
+      <td><input type="text" form="cat-{{ row.category.id }}" name="name" value="{{ row.category.name }}" required></td>
       <td>
-        <form class="inline" method="post" action="/expenses/{{ row.category.id }}/deactivate"
-              onsubmit="return confirm('Kategorie ausblenden? Erfasste Beträge bleiben gespeichert.');">
-          <button type="submit">Ausblenden</button>
-        </form>
+        <select form="cat-{{ row.category.id }}" name="cadence">
+          {% for c in cadences %}
+          <option value="{{ c.value }}" {{ 'selected' if c == row.category.cadence }}>{{ cadence_labels[c] }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td>
+        <input type="text" inputmode="decimal" form="cat-{{ row.category.id }}" name="amount" value="{{ row.amount_default }}" placeholder="z. B. 45,90">
+        <span class="dp-sub">€ pro {{ row.unit }}</span>
+        {% if row.monthly_equivalent %}<br><span class="dp-sub">≈ {{ row.monthly_equivalent }} / Monat</span>{% endif %}
+      </td>
+      <td>{{ row.latest_date }}</td>
+      <td class="exp-actions">
+        <button type="submit" form="cat-{{ row.category.id }}">Speichern</button>
+        <button type="submit" form="cat-{{ row.category.id }}" formaction="/expenses/{{ row.category.id }}/deactivate"
+                onclick="return confirm('Kategorie ausblenden? Erfasste Beträge bleiben gespeichert.');">Ausblenden</button>
+        {% if row.can_delete %}
+        <button type="submit" form="cat-{{ row.category.id }}" formaction="/expenses/{{ row.category.id }}/delete"
+                onclick="return confirm('„{{ row.category.name }}“ endgültig löschen?');">Löschen</button>
+        {% endif %}
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="5">Noch keine Kategorien angelegt.</td></tr>
+    <tr><td colspan="5">Noch keine Kategorien angelegt – unten eine anlegen.</td></tr>
     {% endfor %}
   </tbody>
 </table>
 </div>
 
-<p><a href="/expenses/erfassen" class="btn">Stichtag erfassen</a></p>
+<p><small class="muted">Mehrere Kategorien zu einem gemeinsamen, auch vergangenen Stichtag auf einmal erfassen: <a href="/expenses/erfassen">Stichtag erfassen</a>.</small></p>
 
 <div class="dp-grid">
   <div class="card">
     <h2>Neue Kategorie</h2>
     <form method="post" action="/expenses" class="formgrid">
-      <p><label>Name<br><input type="text" name="name" required autofocus placeholder="z. B. Miete, Haftpflicht, KFZ-Versicherung"></label></p>
-      <p><label>Turnus<br>
+      <label>Name<input type="text" name="name" required autofocus placeholder="z. B. Miete, Haftpflicht, KFZ-Versicherung"></label>
+      <label>Turnus
         <select name="cadence">
           {% for c in cadences %}
           <option value="{{ c.value }}" {{ 'selected' if c.value == 'MONTHLY' }}>{{ cadence_labels[c] }}</option>
           {% endfor %}
         </select>
-      </label><br><small class="muted">Wie oft die Zahlung fällig wird – der Betrag, den du unter „Stichtag erfassen“ einträgst, bezieht sich auf eine Zahlung in diesem Turnus (bei „jährlich“ also die Jahresprämie, nicht ein Zwölftel davon).</small></p>
-      <p><button type="submit" class="btn">Anlegen</button></p>
+      </label>
+      <label>Betrag (optional)<input type="text" inputmode="decimal" name="amount" placeholder="z. B. 45,90, leer lassen geht auch"></label>
+      <p class="span2"><button type="submit" class="btn">Anlegen</button></p>
     </form>
+    <p><small class="muted">Turnus = wie oft die Zahlung fällig wird. Der Betrag bezieht sich auf eine Zahlung in diesem Turnus (bei „jährlich“ die Jahresprämie, nicht ein Zwölftel davon) und wird, falls angegeben, zum heutigen Tag gespeichert.</small></p>
   </div>
 
   {% if hidden %}

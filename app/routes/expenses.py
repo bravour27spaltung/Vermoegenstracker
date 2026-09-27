@@ -7,6 +7,12 @@ daraus ein Monatsäquivalent gebildet (Betrag ÷ Anzahl Monate im Turnus), damit
 Kategorien mit unterschiedlichem Turnus vergleichbar sind und sich zu einer
 monatlichen Gesamtbelastung summieren lassen.
 
+Kategorien werden direkt in der Übersichtstabelle bearbeitet (Name, Turnus und
+aktuellster Betrag in einer Zeile, ein Speichern-Klick) statt über eine separate
+Anlegen-Seite plus separate Erfassen-Seite. Eine Kategorie ohne jeden erfassten
+Betrag lässt sich vollständig löschen; sobald ein Betrag existiert, nur noch
+ausblenden (Historie bleibt erhalten – ExpenseCategoryRecord hat ondelete=RESTRICT).
+
 Getrennt von ExpenseRecord (der einzigen Jahressumme, die die Liquiditätsquote im
 Jahresupdate speist): hier geht es um die Entwicklung einzelner Kategorien über die
 Zeit, damit sich z. B. eine steigende Versicherungsprämie erkennen lässt.
@@ -19,7 +25,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -87,6 +93,25 @@ def _latest_record(session: Session, category_id: int) -> ExpenseCategoryRecord 
     ).scalar_one_or_none()
 
 
+def _record_count(session: Session, category_id: int) -> int:
+    return session.execute(
+        select(func.count()).select_from(ExpenseCategoryRecord).where(ExpenseCategoryRecord.category_id == category_id)
+    ).scalar_one()
+
+
+def _upsert_record(session: Session, category_id: int, snapshot_date: date, amount_cent: int) -> None:
+    existing = session.execute(
+        select(ExpenseCategoryRecord).where(
+            ExpenseCategoryRecord.category_id == category_id,
+            ExpenseCategoryRecord.snapshot_date == snapshot_date,
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        existing.amount_cent = amount_cent
+    else:
+        session.add(ExpenseCategoryRecord(category_id=category_id, snapshot_date=snapshot_date, amount_cent=amount_cent))
+
+
 def _monthly_totals_by_date(session: Session, categories_by_id: dict[int, ExpenseCategory]) -> list[tuple[date, int]]:
     """Monatsäquivalent-Summe aller Kategorien je Stichtag, aufsteigend – Grundlage für den Verlauf."""
     rows = session.execute(
@@ -114,17 +139,16 @@ def overview(request: Request, session: Session = Depends(get_session)):
     rows = []
     for cat in categories:
         rec = latest[cat.id]
-        if rec is None:
-            rows.append({"category": cat, "cadence_label": CADENCE_LABELS[cat.cadence], "latest": "–",
-                         "monthly_equivalent": None, "latest_date": None})
-            continue
-        equiv = monthly_equivalent_cent(cat.cadence, rec.amount_cent)
         rows.append({
             "category": cat,
-            "cadence_label": CADENCE_LABELS[cat.cadence],
-            "latest": f"{format_euro(rec.amount_cent)} / {CADENCE_UNIT[cat.cadence]}",
-            "monthly_equivalent": format_euro(equiv) if cat.cadence != ExpenseCadence.MONTHLY else None,
-            "latest_date": rec.snapshot_date.strftime("%d.%m.%Y"),
+            "unit": CADENCE_UNIT[cat.cadence],
+            "amount_default": format_euro(rec.amount_cent) if rec else "",
+            "monthly_equivalent": (
+                format_euro(monthly_equivalent_cent(cat.cadence, rec.amount_cent))
+                if rec and cat.cadence != ExpenseCadence.MONTHLY else None
+            ),
+            "latest_date": rec.snapshot_date.strftime("%d.%m.%Y") if rec else "–",
+            "can_delete": _record_count(session, cat.id) == 0,
         })
 
     known = [(cat, rec) for cat in categories if (rec := latest[cat.id]) is not None]
@@ -161,6 +185,7 @@ def overview(request: Request, session: Session = Depends(get_session)):
             "feeds_liquidity": feeds_liquidity,
             "liquidity_source": ov.expenses_source,
             "liquidity_amount": format_euro(ov.monthly_expenses_cent),
+            "today": date.today().isoformat(),
             "ok": request.query_params.get("ok"),
             "error": request.query_params.get("error"),
         },
@@ -171,6 +196,7 @@ def overview(request: Request, session: Session = Depends(get_session)):
 def create_category(
     name: str = Form(...),
     cadence: ExpenseCadence = Form(ExpenseCadence.MONTHLY),
+    amount: str = Form(""),
     session: Session = Depends(get_session),
 ):
     name = name.strip()
@@ -180,13 +206,84 @@ def create_category(
     if taken is not None:
         hint = " – sie ist ausgeblendet und lässt sich unten wieder einblenden" if not taken.is_active else ""
         return _redirect(error=f"Eine Kategorie „{name}“ gibt es schon{hint}.")
-    session.add(ExpenseCategory(name=name, cadence=cadence))
+
+    amount = amount.strip()
+    amount_cent = None
+    if amount:
+        try:
+            amount_cent = parse_flexible_amount(amount)
+        except ValueError:
+            return _redirect(error="Betrag nicht erkannt – bitte z. B. 45,90 eingeben (oder leer lassen).")
+
+    category = ExpenseCategory(name=name, cadence=cadence)
+    session.add(category)
+    try:
+        session.flush()
+    except IntegrityError:
+        session.rollback()
+        return _redirect(error=f"Eine Kategorie „{name}“ gibt es schon.")
+
+    if amount_cent is not None:
+        _upsert_record(session, category.id, date.today(), amount_cent)
+
+    session.commit()
+    msg = f"„{name}“ angelegt." if amount_cent is None else f"„{name}“ angelegt mit {format_euro(amount_cent)} / {CADENCE_UNIT[cadence]}."
+    return _redirect(ok=msg)
+
+
+@router.post("/{category_id}")
+def update_category(
+    category_id: int,
+    name: str = Form(...),
+    cadence: ExpenseCadence = Form(...),
+    amount: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    """Speichert Name, Turnus und – falls ausgefüllt – einen neuen Betrag zum heutigen Datum
+    in einem Schritt, direkt aus der Übersichtstabelle heraus (kein separates Formular)."""
+    category = session.get(ExpenseCategory, category_id)
+    if category is None:
+        return _redirect(error="Kategorie nicht gefunden.")
+
+    name = name.strip()
+    if not name:
+        return _redirect(error="Bitte einen Namen eingeben.")
+    taken = _name_taken(session, name, exclude_id=category_id)
+    if taken is not None:
+        return _redirect(error=f"Eine Kategorie „{name}“ gibt es schon.")
+
+    amount = amount.strip()
+    amount_cent = None
+    if amount:
+        try:
+            amount_cent = parse_flexible_amount(amount)
+        except ValueError:
+            return _redirect(error="Betrag nicht erkannt – bitte z. B. 45,90 eingeben (oder Feld leer lassen).")
+
+    category.name = name
+    category.cadence = cadence
+    if amount_cent is not None:
+        _upsert_record(session, category.id, date.today(), amount_cent)
+
     try:
         session.commit()
     except IntegrityError:
         session.rollback()
         return _redirect(error=f"Eine Kategorie „{name}“ gibt es schon.")
-    return _redirect(ok=f"„{name}“ angelegt. Betrag trägst du unten unter „Stichtag erfassen“ ein.")
+    return _redirect(ok=f"„{name}“ gespeichert.")
+
+
+@router.post("/{category_id}/delete")
+def delete_category(category_id: int, session: Session = Depends(get_session)):
+    category = session.get(ExpenseCategory, category_id)
+    if category is None:
+        return _redirect(error="Kategorie nicht gefunden.")
+    if _record_count(session, category_id) > 0:
+        return _redirect(error=f"„{category.name}“ hat bereits erfasste Beträge – zum Erhalt der Historie nur ausblenden, nicht löschen möglich.")
+    name = category.name
+    session.delete(category)
+    session.commit()
+    return _redirect(ok=f"„{name}“ gelöscht.")
 
 
 @router.post("/{category_id}/deactivate")
@@ -291,17 +388,6 @@ async def save_records(request: Request, session: Session = Depends(get_session)
         )
 
     for category_id, amount_cent in parsed.items():
-        existing = session.execute(
-            select(ExpenseCategoryRecord).where(
-                ExpenseCategoryRecord.category_id == category_id,
-                ExpenseCategoryRecord.snapshot_date == target_date,
-            )
-        ).scalar_one_or_none()
-        if existing is not None:
-            existing.amount_cent = amount_cent
-        else:
-            session.add(
-                ExpenseCategoryRecord(category_id=category_id, snapshot_date=target_date, amount_cent=amount_cent)
-            )
+        _upsert_record(session, category_id, target_date, amount_cent)
     session.commit()
     return RedirectResponse(url="/expenses", status_code=303)

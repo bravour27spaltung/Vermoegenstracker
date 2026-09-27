@@ -4,6 +4,7 @@
 {% block content %}
 <div class="dp">
 <h1>Ausgaben zum {{ target_label }}</h1>
+<p><small class="muted">Für einen einzelnen Betrag zum heutigen Tag geht es schneller direkt in der <a href="/expenses">Übersicht</a>. Diese Seite ist für mehrere Kategorien zum selben (auch vergangenen) Stichtag auf einmal.</small></p>
 <form method="get" action="/expenses/erfassen" style="margin:-0.3rem 0 0.8rem">
   <small>Anderer Stichtag: <input type="date" name="snapshot_date" value="{{ target_date }}" onchange="this.form.submit()"></small>
 </form>
